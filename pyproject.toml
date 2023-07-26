@@ -1,5 +1,5 @@
 [project]
-name = "N_Backtest"
+name = "N-Backtest"
 version = "0.1"
 authors = [
   { name="Ninebel", email="myemail@email.com" },
