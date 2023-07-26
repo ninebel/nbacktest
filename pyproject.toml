@@ -1,0 +1,19 @@
+[project]
+name = "N_Backtest"
+version = "0.1"
+authors = [
+  { name="Ninebel", email="myemail@email.com" },
+]
+description = "A Python library for backtesting stocks"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "numpy>=1.23.5",
+    "pandas>=1.5.2",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/ninebel/n-backtest"
