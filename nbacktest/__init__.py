@@ -1,1 +1,1 @@
-from nbacktest import Backtest, Strategy
+from nbacktest.nbacktest import Backtest, Strategy
