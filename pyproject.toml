@@ -1,6 +1,6 @@
 [project]
-name = "N-Backtest"
-version = "0.1"
+name = "n-backtest"
+version = "0.2"
 authors = [
   { name="Ninebel", email="myemail@email.com" },
 ]
