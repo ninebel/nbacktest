@@ -2,7 +2,6 @@ from abc import ABCMeta, abstractmethod
 import pandas as pd
 import numpy as np
 import datetime
-
 #from exceptions import *
 
 
@@ -92,9 +91,26 @@ class Broker:
         self.equity = self.balance
 
         self.orders = [] # All orders are stored here
-        self.orderbook = pd.DataFrame(data={'id':[],'iteration':[], 'timestamp':[], 'action':[], 'ticker':[], 'quantity':[], 'price':[], 'total':[]}).set_index("id") # Order history
+        # Order history
+        self.orderbook = pd.DataFrame(data={
+                                            'id':[],
+                                            'iteration':[],
+                                            'timestamp':[],
+                                            'action':[],
+                                            'ticker':[],
+                                            'quantity':[],
+                                            'price':[],
+                                            'commission':[],
+                                            'slippage':[],
+                                            'total':[]
+                                           }
+                                     ).set_index("id")
 
-        self.positions = pd.DataFrame(data={"quantity":[], "value":[]}) # All open positions
+        self.positions = pd.DataFrame(data={
+                                            "quantity":[],
+                                            "value":[]
+                                           }
+                                     ) # All open positions
 
         self.trades = []
         self.tradebook = pd.DataFrame()
@@ -136,8 +152,10 @@ class Broker:
 
     def place_order (self,
                      action: str,
+                     ticker: str,
                      quantity: int,
-                     ticker: str = ""
+                     commission: float = 0,
+                     slippage: float = 0
                      ):
         """
         Place an order, this function checks all parameters and if everything is correct, then execute the order.
@@ -145,28 +163,74 @@ class Broker:
         In case it is a "sell" order, quantity is negative (you lose stocks) and total is positive (you receive money from selling).
         If it is a "buy" order, quantity is positive (you get stocks) and total is negative (you lose money).
         """
-        id = len(self.orders)
-        iteration = self.iteration
-        timestamp = self.last_row.name
-        price = self.last_row[ticker]
 
+        # ----> CHECK PRIMARY PARAMS
+
+        if action != "sell" and action != "buy":
+            raise Exception("action must be either 'buy' or 'sell'")
+        
         # If user is buying/selling a non-existing stock
         if ticker not in self.universe: raise Exception("%s is not in given universe of stocks!" % ticker)
 
+        # Check ticker
+        if type(ticker) != str: raise Exception("ticker must be a string!")
+        
+        # Check quantity
+        if type(int(quantity)) != int: raise Exception("quantity must be an int!")
+        else:
+            if quantity == 0: raise Exception("quantity must not be zero or null!")
+        
+        # ----> CALCULATE PARAMS
+
+        id = len(self.orders)
+        iteration = self.iteration
+        action = action.lower() # Format action
+        timestamp = self.last_row.name
+        quantity = abs(quantity) if (action == "buy") else -abs(quantity)
+        price = (self.last_row[ticker] + slippage) if (action == "buy") else (self.last_row[ticker] - slippage)
+        total = quantity*price + commission
+
+        # ----> CHECK CALCULATED PARAMS
+        if price < 0:
+            raise Exception("price is lower than 0, check price and slippage")
+
         # Check whether broker has enough cash to buy a stock (in case its a sell order, nothing is checked because the broker is borrowing money)
-        if action == "buy" and quantity*price >= self.balance:
-                return None
-
-
-        order = Order(id=id, iteration=iteration, timestamp=timestamp, action=action, ticker=ticker, quantity=quantity, price=price)
+        if action == "buy" and total >= self.balance:
+            raise Exception("Broker does not have enough cash to execute buy order")
 
         # ----> PROCESS ORDER (Assume orders are instantaneously filled)
 
-        self.balance += order.total # Update cash balance. Total<0 if buying, Total>0 if selling
-        
-        # Updates broker's orders
-        self.orders.append(order) # Append order
-        self.orderbook.loc[order.id] = [order.iteration, order.timestamp, order.action, order.ticker, order.quantity, order.price, order.total] # Add new 'order row' to orderbook (this works as an incremental load)
+        # Create new order instance
+        order = Order(id=id,
+                      iteration=iteration,
+                      timestamp=timestamp,
+                      action=action,
+                      ticker=ticker,
+                      quantity=quantity,
+                      price=price,
+                      commission=commission,
+                      slippage=slippage,
+                      total=total
+                     )
+
+        # Update cash balance. Total<0 if buying, Total>0 if selling
+        self.balance += order.total
+
+        # Append newly created order to a list of orders
+        self.orders.append(order)
+
+        # Add new 'order row' to orderbook (this works as an incremental load)
+        self.orderbook.loc[order.id] = [
+                                        order.iteration,
+                                        order.timestamp,
+                                        order.action,
+                                        order.ticker,
+                                        order.quantity,
+                                        order.price,
+                                        order.commission,
+                                        order.slippage,
+                                        order.total
+                                       ]
 
         # Update broker equity, positions and trades
         self.update(self.iteration, self.last_row)
@@ -226,7 +290,10 @@ class Order:
                   action: str,
                   ticker: str,
                   quantity: int,
-                  price: float
+                  price: float,
+                  commission: float,
+                  slippage: float,
+                  total: float
                   ) -> None:
         """
         Creates an order, all parameters are checked and edited. The current "status" parameter is not implemented, so it doesn't affect the backtest at all!
@@ -239,41 +306,9 @@ class Order:
         self.ticker = ticker
         self.quantity = quantity
         self.price = price
-        self.total = self.quantity * self.price
-
-        self.check_fix_params() # Check and fix parameters. If this fails an exception will be raised
-
-
-    def check_fix_params (self):
-        """
-        This function checks all parameters and if anything fails, it raises an exception
-        """
-
-        # ----> CHECK PARAMS
-
-        # Check ticker
-        if type(self.ticker) != str: raise Exception("ticker must be a string!")
-        
-        # Check quantity
-        if type(int(self.quantity)) != int: raise Exception("quantity must be an int!")
-        else:
-            if self.quantity == 0: raise Exception("quantity must not be zero or null!")
-
-        if type(int(self.price)) != int and type(float(self.price)) != float: raise Exception("price must be an int or float!")
-
-        if self.action.lower() != "sell" and self.action.lower() != "buy":
-            raise Exception("action must be either 'buy' or 'sell'")
-        
-        # ----> FIX PARAMS
-
-        self.price = abs(self.price) # Price must be positive
-        self.action = self.action.lower() # Format action
-
-        # If its a SELL/SHORT order
-        if self.action == "sell": self.quantity = -abs(self.quantity); self.total = abs(self.price*self.quantity)
-
-        # If its a BUY/LONG order
-        elif self.action == "buy": self.quantity = abs(self.quantity); self.total = -abs(self.price*self.quantity)
+        self.commission = commission
+        self.slippage = slippage
+        self.total = total
 
 
 class Trade:
@@ -281,7 +316,8 @@ class Trade:
     def __init__ (self,
                   id: int,
                   broker: Broker,
-                  orders: list[Order]
+                  orders: list[Order],
+                  description: str = ""
                   ):
         """
         A trade is the same as an operation in the common sense, they are ways of grouping orders (like a buy, then sell order are a LONG trade).
@@ -292,6 +328,7 @@ class Trade:
         self.id = id
         self.broker = broker
         self.status = "open" # possible options: "open" / "closed"
+        self.description = description # A simple description for the trade. Reason for the trade? What are you trading?
         self.balance = 0
         self.pl = None # Profit/Loss per share (example: buy price - sell price)
         self.created_at_iteration = min(order.iteration for order in orders)
@@ -316,7 +353,6 @@ class Trade:
         Adds an order to the trade and update orderbook.
         """
         self.orders.append(order)
-
         self.orderbook.loc[order.id] = [order.iteration, order.timestamp, order.action, order.ticker, order.quantity, order.price, order.total] # Add new 'order row' to orderbook
 
         return self.orders
@@ -430,35 +466,51 @@ class Strategy (metaclass=ABCMeta):
     def buy (self,
              ticker: str,
              quantity: int,
+             commission: float = 0,
+             slippage: float = 0
              ):
         """
-        Place a BUY/LONG order
+        Request broker to place a BUY/LONG order
         """ 
-        return self.broker.place_order(action="buy", ticker=ticker, quantity=int(quantity))
+        return self.broker.place_order(action="buy", ticker=ticker, quantity=int(quantity), commission=commission, slippage=slippage)
 
 
     def sell (self,
               ticker: str,
               quantity: int,
+              commission: float = 0,
+              slippage: float = 0
               ):
         """
-        Place a SELL/SHORT order
+        Request broker to place a SELL/SHORT order
         """
-        return self.broker.place_order(action="sell", ticker=ticker, quantity=int(quantity))
+        return self.broker.place_order(action="sell", ticker=ticker, quantity=int(quantity), commission=commission, slippage=slippage)
 
 
-    def new_trade (self,
-                   orders: list[Order]
-                   ):
+    def create_trade (self,
+                      orders: list[Order],
+                      description: str = ""
+                      ):
         """
         Create a new trade
         """
         if not len(orders): # If there are no orders in the list
             return None
         
-        trade = Trade(id=len(self.broker.trades), broker=self.broker, orders=orders)
+        trade = Trade(id=len(self.broker.trades), broker=self.broker, orders=orders, description=description)
 
         self.broker.trades.append(trade)
+        self.broker.tradebook = pd.DataFrame(data={
+                                                   'id': [trade.id for trade in self.broker.trades],
+                                                   'status': [trade.status for trade in self.broker.trades], 
+                                                   'description': [trade.description for trade in self.broker.trades], 
+                                                   'pl': [trade.pl for trade in self.broker.trades], 
+                                                   'created_at_iteration': [trade.created_at_iteration for trade in self.broker.trades],
+                                                   'sl': [trade.sl for trade in self.broker.trades],
+                                                   'tp': [trade.tp for trade in self.broker.trades],
+                                                   'max_age': [trade.max_age for trade in self.broker.trades]
+                                                   }
+                                            ).set_index("id")
 
         return trade
 
@@ -472,9 +524,3 @@ class Strategy (metaclass=ABCMeta):
 
         return trade.close()
     
-
-
-
-
-
-
