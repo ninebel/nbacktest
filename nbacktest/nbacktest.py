@@ -192,7 +192,7 @@ class Broker:
         action = action.lower() # Format action
         quantity = abs(quantity) if (action == "buy") else -abs(quantity)
         price = (self.last_close[ticker] + slippage) if (action == "buy") else (self.last_close[ticker] - slippage)
-        total = quantity*price + commission
+        total = -abs(quantity*price) - commission if (action == "buy") else abs(quantity*price) - commission
 
         # ----> CHECK CALCULATED PARAMS
         if price < 0:
