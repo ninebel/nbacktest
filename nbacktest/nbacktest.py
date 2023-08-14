@@ -14,7 +14,8 @@ class Backtest:
                  cash: float = 10_000,
                  ):
 
-        self.full_data = data.copy()
+        self.full_data = data.copy() # Copy of dataframe
+        self.result = self.full_data.copy() # Result dataframe (returned on the end of backtest)
         self.broker = Broker(universe=universe, cash=cash, data=self.full_data)
         self.universe = universe #list(data.columns.levels[1]) #data.columns = pd.MultiIndex.from_product([data.columns, ['AAPL']])
         self.strategy = strategy(self.broker)
@@ -22,13 +23,18 @@ class Backtest:
 
     def run (self):
 
-        self.full_data["Equity"] = np.nan
+        # Create columns for result dataframe
+        self.result["_iteration"] = np.nan
+        self.result["_equity"] = np.nan
+
+        # Set strategy's fixed variables
+        self.strategy.universe = self.universe
 
         # ----> MAIN LOOP
 
-        for i in range (0, len(self.full_data)):
+        for i in range (0, len(self.full_data), 1):
             
-            # Set strategy's variables!
+            # Set strategy's variables
             self.strategy.data = self.full_data[0:i+1]
             self.strategy.index = self.strategy.data.index
             self.strategy.open = self.strategy.data["Open"]
@@ -36,13 +42,12 @@ class Backtest:
             self.strategy.low = self.strategy.data["Low"]
             self.strategy.close = self.strategy.data["Adj Close"]
             self.strategy.volume = self.strategy.data["Volume"]
-            self.strategy.universe = self.universe
             self.strategy.iteration = i # Tracks simulation step (which iteration are we running?)
 
             # ----> RUN STRATEGY (Run inside a try so in case an error happens, backtest doesnt fail)
 
             # Broker must be updated before strategy, so when the strategy runs on close, it already knows the updated positions and equity
-            self.broker.update(iteration=i, last_row=self.strategy.close.iloc[-1]) # Update broker (send current prices so broker can update positions)
+            self.broker.update(iteration=i, last_close=self.strategy.close.iloc[-1]) # Update broker (send current prices so broker can update positions)
 
             self.strategy.positions = self.broker.positions.transpose().to_dict() # strategy.position is the broker.position but with few changes for user friendliness
 
@@ -62,20 +67,19 @@ class Backtest:
             except Exception as e:
                 print(e)
                 raise e
-                print("ERROR:", e)
                 
 
             # Stop backtest if broker has no equity left!
             if self.broker.equity <= 0:
-                #break
                 raise Exception("Out of money")
 
-            # Append equity data for backtest result
-            self.full_data.iloc[i, self.full_data.columns.get_loc('Equity')] = self.broker.equity
+            # Append params from backtest to result dataframe
+            self.result.iloc[i, self.result.columns.get_loc('_iteration')] = self.broker.iteration
+            self.result.iloc[i, self.result.columns.get_loc('_equity')] = self.broker.equity
 
-        #self.full_data = self.full_data.dropna() # Remove all rows that have NaN (this happens when the simulation didnt finish, most likely went bankrupt)
+        #self.result = self.result.dropna() # Remove all rows that have NaN (this happens when the simulation didnt finish, most likely went bankrupt)
 
-        return self.full_data
+        return self.result
 
 
 class Broker:
@@ -91,11 +95,11 @@ class Broker:
         self.equity = self.balance
 
         self.orders = [] # All orders are stored here
+
         # Order history
         self.orderbook = pd.DataFrame(data={
                                             'id':[],
                                             'iteration':[],
-                                            'timestamp':[],
                                             'action':[],
                                             'ticker':[],
                                             'quantity':[],
@@ -106,42 +110,43 @@ class Broker:
                                            }
                                      ).set_index("id")
 
+        # All open positions
         self.positions = pd.DataFrame(data={
                                             "quantity":[],
                                             "value":[]
                                            }
-                                     ) # All open positions
+                                     )
 
         self.trades = []
         self.tradebook = pd.DataFrame()
 
         self.iteration = 0 # Keep track of simulation iteration
-        self.last_row = None # Last dat row that is available to strategy (containing index, prices, etc)
+        self.last_close = None # Last close that is available to strategy (contains index and closing prices)
 
 
     def update (self,
                 iteration: int,
-                last_row: pd.Series
+                last_close: pd.Series
                 ):
         
         """
         This function is responsible for keeping the broker updated. Each iteration this should be called so the broker can update its parameters.
 
-        last_prices is going to be a Pandas Series, like:
+        last_close is going to be a Pandas Series, like:
             AAPL    164.076080
             GOOG    127.960999
             Name: 2022-04-18 00:00:00, dtype: float64
 
         Examples:
-            last_prices.name = 2022-04-18 00:00:00
-            last_prices["AAPL"] = 164.076080
-            last_prices.loc["AAPL"] = 164.076080
+            last_close.name = 2022-04-18 00:00:00
+            last_close["AAPL"] = 164.076080
+            last_close.loc["AAPL"] = 164.076080
         """
         self.iteration = iteration
-        self.last_row = last_row
+        self.last_close = last_close
 
         # Update position and equity for the broker
-        self.positions = self._calc_positions(self.last_row, self.orderbook)
+        self.positions = self._calc_positions(self.last_close, self.orderbook)
         self.equity = self._calc_equity(self.balance, self.positions)
 
         # Update trades that are still OPEN (running)
@@ -185,9 +190,8 @@ class Broker:
         id = len(self.orders)
         iteration = self.iteration
         action = action.lower() # Format action
-        timestamp = self.last_row.name
         quantity = abs(quantity) if (action == "buy") else -abs(quantity)
-        price = (self.last_row[ticker] + slippage) if (action == "buy") else (self.last_row[ticker] - slippage)
+        price = (self.last_close[ticker] + slippage) if (action == "buy") else (self.last_close[ticker] - slippage)
         total = quantity*price + commission
 
         # ----> CHECK CALCULATED PARAMS
@@ -203,7 +207,6 @@ class Broker:
         # Create new order instance
         order = Order(id=id,
                       iteration=iteration,
-                      timestamp=timestamp,
                       action=action,
                       ticker=ticker,
                       quantity=quantity,
@@ -222,7 +225,6 @@ class Broker:
         # Add new 'order row' to orderbook (this works as an incremental load)
         self.orderbook.loc[order.id] = [
                                         order.iteration,
-                                        order.timestamp,
                                         order.action,
                                         order.ticker,
                                         order.quantity,
@@ -233,14 +235,14 @@ class Broker:
                                        ]
 
         # Update broker equity, positions and trades
-        self.update(self.iteration, self.last_row)
+        self.update(iteration=self.iteration, last_close=self.last_close)
 
         return order
 
 
     @staticmethod
     def _calc_positions (
-                         last_row: pd.Series,
+                         last_close: pd.Series,
                          orderbook: pd.DataFrame
                         ):
         """
@@ -262,7 +264,7 @@ class Broker:
 
         for ticker in positions.index:
 
-            price = last_row[ticker]
+            price = last_close[ticker]
             quantity = positions.loc[ticker, "quantity"]
             positions.loc[ticker, "value"] = price * quantity
 
@@ -286,7 +288,6 @@ class Order:
     def __init__ (self,
                   id: int,
                   iteration: int,
-                  timestamp: datetime.datetime,
                   action: str,
                   ticker: str,
                   quantity: int,
@@ -301,7 +302,6 @@ class Order:
 
         self.id = id
         self.iteration = iteration
-        self.timestamp = timestamp
         self.action = action
         self.ticker = ticker
         self.quantity = quantity
@@ -335,8 +335,28 @@ class Trade:
 
         # Order and position handling
         self.orders = []
-        self.orderbook = pd.DataFrame(data={'id':[],'iteration':[], 'timestamp':[], 'action':[], 'ticker':[], 'quantity':[], 'price':[], 'total':[]}).set_index("id") # Order history
-        self.positions = pd.DataFrame(data={"quantity":[], "value":[]}) # All open positions
+
+        # Order history
+        self.orderbook = pd.DataFrame(data={
+                                            'id':[],
+                                            'iteration':[],
+                                            'action':[],
+                                            'ticker':[],
+                                            'quantity':[],
+                                            'price':[],
+                                            'commission':[],
+                                            'slippage':[],
+                                            'total':[]
+                                           }
+                                     ).set_index("id")
+
+        # All open positions
+        self.positions = pd.DataFrame(data={
+                                            "quantity":[],
+                                            "value":[]
+                                           }
+                                     )
+
         for order in orders:
             self.add_order(order)
 
@@ -353,7 +373,13 @@ class Trade:
         Adds an order to the trade and update orderbook.
         """
         self.orders.append(order)
-        self.orderbook.loc[order.id] = [order.iteration, order.timestamp, order.action, order.ticker, order.quantity, order.price, order.total] # Add new 'order row' to orderbook
+        self.orderbook.loc[order.id] = [order.iteration,
+                                        order.action,
+                                        order.ticker,
+                                        order.quantity,
+                                        order.price,
+                                        order.total
+                                       ] # Add new 'order row' to orderbook
 
         return self.orders
 
@@ -363,7 +389,7 @@ class Trade:
         Update trade positions and PL. This function is called every iteration by the broker.
         """       
 
-        self.positions = Broker._calc_positions(self.broker.last_row, self.orderbook) # Helper function from broker to calculate new positions
+        self.positions = Broker._calc_positions(self.broker.last_close, self.orderbook) # Helper function from broker to calculate new positions
         self.pl = Broker._calc_equity(self.balance, self.positions) # Helper function from broker to calculate PL/trade equity
         self.check_stop()
 
@@ -373,7 +399,6 @@ class Trade:
         """
         Check is a trade caan  be closed. This function is NOT BEING USED
         """
-
 
         if len(self.positions) == 0: 
             return True
@@ -426,7 +451,7 @@ class Trade:
             self.add_order(order)
 
         # Effectively close trade, calculating final PL and updating status
-        self.positions = Broker._calc_positions(last_row=self.broker.last_row, orderbook=self.orderbook) # Helper function from broker to calculate new positions
+        self.positions = Broker._calc_positions(last_close=self.broker.last_close, orderbook=self.orderbook) # Helper function from broker to calculate new positions
         self.pl = Broker._calc_equity(balance=self.balance, positions=self.positions) # Helper function from broker to calculate equity
 
 
