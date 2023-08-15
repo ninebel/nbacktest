@@ -1,5 +1,5 @@
 [project]
-name = "n-backtest"
+name = "nbacktest"
 version = "0.2"
 authors = [
   { name="Ninebel", email="myemail@email.com" },
@@ -16,4 +16,5 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/ninebel/n-backtest"
+"Homepage" = "https://github.com/ninebel/nbacktest"
+

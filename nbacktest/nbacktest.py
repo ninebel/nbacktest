@@ -14,12 +14,32 @@ class Backtest:
                  cash: float = 10_000,
                  ):
 
+        data = self.check_params(universe, data.copy())
+
         self.full_data = data.copy() # Copy of dataframe
         self.result = self.full_data.copy() # Result dataframe (returned on the end of backtest)
         self.broker = Broker(universe=universe, cash=cash, data=self.full_data)
         self.universe = universe #list(data.columns.levels[1]) #data.columns = pd.MultiIndex.from_product([data.columns, ['AAPL']])
         self.strategy = strategy(self.broker)
         
+
+    def check_params (self, universe, data):
+        """ Check and fix input params """
+
+        if len(universe) < 1:
+            raise Exception("Your universe of stocks is lower than one. Please fill in the ticker of the stocks you wish to backtest.")
+        
+        # Check if data is in multindex format, in case not, then convert it assuming you are backtesting only one stock
+        if type(data.columns) != pd.core.indexes.multi.MultiIndex:
+            if len(universe) == 1:
+                print("Converting data to multi index!")
+                data.columns = pd.MultiIndex.from_product([ data.columns, [universe[0]] ]) # Convert index to multindex          
+            else:
+                raise Exception("You are backtesting more than one stock, but your data is not in multi index format")
+
+        return data
+
+
 
     def run (self):
 
@@ -60,9 +80,9 @@ class Backtest:
 
                 # This is the last function run (Ran when the iteration is at the last candle of data)
                 if i == len(self.full_data) - 1: self.strategy.on_end()
-                
+
+            # This is normally raised when next() tries something like: self.close[-3] when the index is not yet available 
             except IndexError:
-                # This is normally raised when next() tries something like: self.close[-3] when the index is not yet available
                 pass
             except Exception as e:
                 print(e)
@@ -372,14 +392,20 @@ class Trade:
         """
         Adds an order to the trade and update orderbook.
         """
+        # Append newly created order to a list of orders
         self.orders.append(order)
-        self.orderbook.loc[order.id] = [order.iteration,
+
+        # Add new 'order row' to orderbook (this works as an incremental load)
+        self.orderbook.loc[order.id] = [
+                                        order.iteration,
                                         order.action,
                                         order.ticker,
                                         order.quantity,
                                         order.price,
+                                        order.commission,
+                                        order.slippage,
                                         order.total
-                                       ] # Add new 'order row' to orderbook
+                                       ]
 
         return self.orders
 
