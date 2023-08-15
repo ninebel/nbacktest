@@ -166,8 +166,8 @@ class Broker:
         self.last_close = last_close
 
         # Update position and equity for the broker
-        self.positions = self._calc_positions(self.last_close, self.orderbook)
-        self.equity = self._calc_equity(self.balance, self.positions)
+        self.positions = self._calc_positions(orderbook=self.orderbook, last_close=self.last_close)
+        self.equity = self._calc_equity(balance=self.balance, positions=self.positions)
 
         # Update trades that are still OPEN (running)
         for trade in self.trades:
@@ -262,8 +262,8 @@ class Broker:
 
     @staticmethod
     def _calc_positions (
-                         last_close: pd.Series,
-                         orderbook: pd.DataFrame
+                         orderbook: pd.DataFrame,
+                         last_close: pd.Series
                         ):
         """
         Calculate current open positions from orderbook
@@ -407,6 +407,8 @@ class Trade:
                                         order.total
                                        ]
 
+        self.balance += order.total
+
         return self.orders
 
 
@@ -415,8 +417,8 @@ class Trade:
         Update trade positions and PL. This function is called every iteration by the broker.
         """       
 
-        self.positions = Broker._calc_positions(self.broker.last_close, self.orderbook) # Helper function from broker to calculate new positions
-        self.pl = Broker._calc_equity(self.balance, self.positions) # Helper function from broker to calculate PL/trade equity
+        self.positions = Broker._calc_positions(orderbook=self.orderbook, last_close=self.broker.last_close) # Helper function from broker to calculate new positions
+        self.pl = Broker._calc_equity(balance=self.balance, positions=self.positions) # Helper function from broker to calculate PL/trade equity
         self.check_stop()
 
 
@@ -467,17 +469,17 @@ class Trade:
             # If its a LONG position, close with a SELL/SHORT order
             if quantity > 0: 
                 order = self.broker.place_order(action="sell", ticker=ticker, quantity=-1*quantity)
-                self.balance += order.total
+                #self.balance += order.total
 
             # If its a SHORT position, close with a BUY/SHORT order
             if quantity < 0: 
                 order = self.broker.place_order(action="buy", ticker=ticker, quantity=-1*quantity)
-                self.balance += order.total
+                #self.balance += order.total
             
             self.add_order(order)
 
         # Effectively close trade, calculating final PL and updating status
-        self.positions = Broker._calc_positions(last_close=self.broker.last_close, orderbook=self.orderbook) # Helper function from broker to calculate new positions
+        self.positions = Broker._calc_positions(orderbook=self.orderbook, last_close=self.broker.last_close) # Helper function from broker to calculate new positions
         self.pl = Broker._calc_equity(balance=self.balance, positions=self.positions) # Helper function from broker to calculate equity
 
 
