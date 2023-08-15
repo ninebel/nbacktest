@@ -352,6 +352,7 @@ class Trade:
         self.balance = 0
         self.pl = None # Profit/Loss per share (example: buy price - sell price)
         self.created_at_iteration = min(order.iteration for order in orders)
+        self.closed_at_iteration = -1
 
         # Order and position handling
         self.orders = []
@@ -458,7 +459,8 @@ class Trade:
         Close a trade. If there any open positions, orders are placed to close positions. When these are completed, the trade is considered to be closed.
         If there are no open positions, final PL and status will be updated, closing the trade.
         """
-        self.status = "closed"
+        self.status = "closed" # Keep this line here, if it is at the end of the function the broker will be stuck in a loop trying to close this trade if sl or tp is activated!
+
         # Close still open positions
         for i in range (len(self.positions)):
 
@@ -469,16 +471,15 @@ class Trade:
             # If its a LONG position, close with a SELL/SHORT order
             if quantity > 0: 
                 order = self.broker.place_order(action="sell", ticker=ticker, quantity=-1*quantity)
-                #self.balance += order.total
 
             # If its a SHORT position, close with a BUY/SHORT order
             if quantity < 0: 
                 order = self.broker.place_order(action="buy", ticker=ticker, quantity=-1*quantity)
-                #self.balance += order.total
             
             self.add_order(order)
 
         # Effectively close trade, calculating final PL and updating status
+        self.closed_at_iteration = max(order.iteration for order in self.orders)
         self.positions = Broker._calc_positions(orderbook=self.orderbook, last_close=self.broker.last_close) # Helper function from broker to calculate new positions
         self.pl = Broker._calc_equity(balance=self.balance, positions=self.positions) # Helper function from broker to calculate equity
 
@@ -559,6 +560,7 @@ class Strategy (metaclass=ABCMeta):
                                                    'description': [trade.description for trade in self.broker.trades], 
                                                    'pl': [trade.pl for trade in self.broker.trades], 
                                                    'created_at_iteration': [trade.created_at_iteration for trade in self.broker.trades],
+                                                   'closed_at_iteration': [trade.closed_at_iteration for trade in self.broker.trades],
                                                    'sl': [trade.sl for trade in self.broker.trades],
                                                    'tp': [trade.tp for trade in self.broker.trades],
                                                    'max_age': [trade.max_age for trade in self.broker.trades]
