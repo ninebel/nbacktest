@@ -43,6 +43,7 @@ class Backtest:
 
     def run (self):
 
+        # Create lists for holding the values to be inserted as columns to the final result dataframe at the end of the backtest
         iteration_list = []
         equity_list = []
 
