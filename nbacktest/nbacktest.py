@@ -16,8 +16,8 @@ class Backtest:
 
         data = self.check_params(universe, data.copy())
 
-        self.full_data = data.copy() # Copy of dataframe
-        self.result = self.full_data.copy() # Result dataframe (returned on the end of backtest)
+        self.full_data = data.copy() # Simply a copy of dataframe
+        self.result = None # Result dataframe (returned on the end of backtest)
         self.broker = Broker(universe=universe, cash=cash, data=self.full_data)
         self.universe = universe #list(data.columns.levels[1]) #data.columns = pd.MultiIndex.from_product([data.columns, ['AAPL']])
         self.strategy = strategy(self.broker)
@@ -43,9 +43,8 @@ class Backtest:
 
     def run (self):
 
-        # Create columns for result dataframe
-        self.result["_iteration"] = np.nan
-        self.result["_equity"] = np.nan
+        iteration_list = []
+        equity_list = []
 
         # Set strategy's fixed variables
         self.strategy.universe = self.universe
@@ -55,16 +54,16 @@ class Backtest:
         for i in range (0, len(self.full_data), 1):
             
             # Set strategy's variables
-            self.strategy.data = self.full_data[0:i+1]
+            self.strategy.data = self.full_data.iloc[0:i+1].copy()
             self.strategy.index = self.strategy.data.index
-            self.strategy.open = self.strategy.data["Open"]
-            self.strategy.high = self.strategy.data["High"]
-            self.strategy.low = self.strategy.data["Low"]
-            self.strategy.close = self.strategy.data["Adj Close"]
-            self.strategy.volume = self.strategy.data["Volume"]
+            self.strategy.open = self.strategy.data.loc[:, "Open"]
+            self.strategy.high = self.strategy.data.loc[:, "High"]
+            self.strategy.low = self.strategy.data.loc[:, "Low"]
+            self.strategy.close = self.strategy.data.loc[:, "Adj Close"]
+            self.strategy.volume = self.strategy.data.loc[:, "Volume"]
             self.strategy.iteration = i # Tracks simulation step (which iteration are we running?)
 
-            # ----> RUN STRATEGY (Run inside a try so in case an error happens, backtest doesnt fail)
+            # ----> RUN STRATEGY (Run inside a try so in case an error happens, backtest does not fail/stop)
 
             # Broker must be updated before strategy, so when the strategy runs on close, it already knows the updated positions and equity
             self.broker.update(iteration=i, last_close=self.strategy.close.iloc[-1]) # Update broker (send current prices so broker can update positions)
@@ -94,12 +93,50 @@ class Backtest:
                 raise Exception("Out of money")
 
             # Append params from backtest to result dataframe
-            self.result.iloc[i, self.result.columns.get_loc('_iteration')] = self.broker.iteration
-            self.result.iloc[i, self.result.columns.get_loc('_equity')] = self.broker.equity
+            iteration_list.append(self.broker.iteration)
+            equity_list.append(self.broker.equity)
 
-        #self.result = self.result.dropna() # Remove all rows that have NaN (this happens when the simulation didnt finish, most likely went bankrupt)
 
-        return self.result
+        # Set dataframe result
+        self.result = self.strategy.data.copy()
+
+        # Create columns for result dataframe
+        self.result.loc[:, "_iteration"] = iteration_list
+        self.result.loc[:, "_equity"] = equity_list
+
+        return self.result # Return result
+
+
+    def statistics (self):
+
+        if self.result is None:
+            print("Run the backtest before accessing statistics!")
+            return
+        
+        df_wins = self.broker.tradebook.query("pl > 0")
+        df_losses = self.broker.tradebook.query("pl <= 0")
+
+        n_won = len(df_wins)
+        n_lost = len(df_losses)
+        n_total = n_won + n_lost
+        win_rate = n_won/n_total
+        avg_abs_return = self.broker.tradebook["pl"].sum() / n_total # This is also the expected value per trade (EV)
+
+        avg_abs_return_per_win = df_wins["pl"].sum() / n_won
+        avg_abs_return_per_lost = df_losses["pl"].sum() / n_lost
+
+
+        statistics = {
+                      "n_won": n_won,
+                      "n_lost": n_lost,
+                      "n_total": n_total,
+                      "win_rate": win_rate,
+                      "avg_abs_return": avg_abs_return,
+                      "avg_abs_return_per_win": avg_abs_return_per_win,
+                      "avg_abs_return_per_lost": avg_abs_return_per_lost
+                     }
+        
+        return statistics
 
 
 class Broker:
