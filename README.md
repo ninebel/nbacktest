@@ -1,5 +1,5 @@
 # nbacktest
-A Python library for backtesting stocks
+A Python library for backtesting stocks, entirely written in Python, requires only pandas and numpy to work
 
 This library was developed focusing on backtesting multiple stocks.
 
