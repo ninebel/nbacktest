@@ -661,22 +661,6 @@ class Strategy (metaclass=ABCMeta):
                                  description=description
                                  )
 
-        #trade = Trade(id=len(self.broker.trades), broker=self.broker, orders=orders, description=description)
-
-        #self.broker.trades.append(trade)
-        #self.broker.tradebook = pd.DataFrame(data={
-        #                                           'id': [trade.id for trade in self.broker.trades],
-        #                                           'status': [trade.status for trade in self.broker.trades], 
-        #                                           'description': [trade.description for trade in self.broker.trades], 
-        #                                           'pl': [trade.pl for trade in self.broker.trades], 
-        #                                           'created_at_iteration': [trade.created_at_iteration for trade in self.broker.trades],
-        #                                           'closed_at_iteration': [trade.closed_at_iteration for trade in self.broker.trades],
-        #                                           'sl': [trade.sl for trade in self.broker.trades],
-        #                                           'tp': [trade.tp for trade in self.broker.trades],
-        #                                           'max_age': [trade.max_age for trade in self.broker.trades]
-        #                                           }
-        #                                    ).set_index("id")
-
         return trade
 
 
