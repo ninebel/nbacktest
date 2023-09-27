@@ -148,9 +148,17 @@ class Broker:
                  data: pd.DataFrame
                  ):
         
-        self.universe = universe
-        self.balance = cash
-        self.equity = self.balance
+
+        # -----> STRATEGY MANAGEMENT
+
+        self.universe = universe # Universe of tradeable stocks
+        self.balance = cash # Balance
+        self.equity = self.balance # At the start, equity is equal to balance, as you have positions
+        self.iteration = 0 # Keep track of simulation iteration
+        self.last_close = None # Last close that is available to strategy (contains index and closing prices)
+
+
+        # -----> ORDER MANAGEMENT
 
         self.orders = [] # All orders are stored here
 
@@ -168,19 +176,35 @@ class Broker:
                                            }
                                      ).set_index("id")
 
-        # All open positions
+
+        # -----> POSITION MANAGEMENT
+
+        # Positions - all positions are considered to be OPEN, when a position is closed, it is removed from this dataframe
         self.positions = pd.DataFrame(data={
                                             "quantity":[],
                                             "value":[]
                                            }
                                      )
 
-        self.trades = []
-        self.tradebook = pd.DataFrame()
 
-        self.iteration = 0 # Keep track of simulation iteration
-        self.last_close = None # Last close that is available to strategy (contains index and closing prices)
+         # -----> TRADE MANAGEMENT
 
+        self.trades = [] # All trades are stored here
+
+        # Trade history
+        self.tradebook = pd.DataFrame(data={
+                                                   'id': [],
+                                                   'status': [], 
+                                                   'description': [], 
+                                                   'pl': [], 
+                                                   'created_at_iteration': [],
+                                                   'closed_at_iteration': [],
+                                                   'sl': [],
+                                                   'tp': [],
+                                                   'max_age': []
+                                                   }
+                                            ).set_index("id")
+    
 
     def update (self,
                 iteration: int,
@@ -190,7 +214,7 @@ class Broker:
         """
         This function is responsible for keeping the broker updated. Each iteration this should be called so the broker can update its parameters.
 
-        last_close is going to be a Pandas Series, like:
+        last_close is a Pandas Series, like:
             AAPL    164.076080
             GOOG    127.960999
             Name: 2022-04-18 00:00:00, dtype: float64
@@ -200,17 +224,36 @@ class Broker:
             last_close["AAPL"] = 164.076080
             last_close.loc["AAPL"] = 164.076080
         """
+
         self.iteration = iteration
         self.last_close = last_close
 
-        # Update position and equity for the broker
+        # Update positions
         self.positions = self._calc_positions(orderbook=self.orderbook, last_close=self.last_close)
+
+        # Update equity
         self.equity = self._calc_equity(balance=self.balance, positions=self.positions)
 
         # Update trades that are still OPEN (running)
         for trade in self.trades:
             if trade.status == "open":
                 trade.update()
+
+        # Update tradebook
+        if len(self.trades) >= 1:
+
+            self.tradebook = pd.DataFrame(data={
+                                                'id': [trade.id for trade in self.trades],
+                                                'status': [trade.status for trade in self.trades], 
+                                                'description': [trade.description for trade in self.trades], 
+                                                'pl': [trade.pl for trade in self.trades], 
+                                                'created_at_iteration': [trade.created_at_iteration for trade in self.trades],
+                                                'closed_at_iteration': [trade.closed_at_iteration for trade in self.trades],
+                                                'sl': [trade.sl for trade in self.trades],
+                                                'tp': [trade.tp for trade in self.trades],
+                                                'max_age': [trade.max_age for trade in self.trades]
+                                                }
+                                        ).set_index("id")
 
 
     def place_order (self,
@@ -296,6 +339,31 @@ class Broker:
         self.update(iteration=self.iteration, last_close=self.last_close)
 
         return order
+
+
+    def create_trade (self,
+                      orders: list,
+                      description: str
+                      ):
+
+        trade = Trade(id=len(self.trades), broker=self, orders=orders, description=description)
+
+        self.trades.append(trade)
+
+        self.tradebook = pd.DataFrame(data={
+                                            'id': [trade.id for trade in self.trades],
+                                            'status': [trade.status for trade in self.trades], 
+                                            'description': [trade.description for trade in self.trades], 
+                                            'pl': [trade.pl for trade in self.trades], 
+                                            'created_at_iteration': [trade.created_at_iteration for trade in self.trades],
+                                            'closed_at_iteration': [trade.closed_at_iteration for trade in self.trades],
+                                            'sl': [trade.sl for trade in self.trades],
+                                            'tp': [trade.tp for trade in self.trades],
+                                            'max_age': [trade.max_age for trade in self.trades]
+                                            }
+                                    ).set_index("id")
+        
+        return trade
 
 
     @staticmethod
@@ -589,21 +657,25 @@ class Strategy (metaclass=ABCMeta):
         if not len(orders): # If there are no orders in the list
             return None
         
-        trade = Trade(id=len(self.broker.trades), broker=self.broker, orders=orders, description=description)
+        trade = self.broker.create_trade(orders=orders,
+                                 description=description
+                                 )
 
-        self.broker.trades.append(trade)
-        self.broker.tradebook = pd.DataFrame(data={
-                                                   'id': [trade.id for trade in self.broker.trades],
-                                                   'status': [trade.status for trade in self.broker.trades], 
-                                                   'description': [trade.description for trade in self.broker.trades], 
-                                                   'pl': [trade.pl for trade in self.broker.trades], 
-                                                   'created_at_iteration': [trade.created_at_iteration for trade in self.broker.trades],
-                                                   'closed_at_iteration': [trade.closed_at_iteration for trade in self.broker.trades],
-                                                   'sl': [trade.sl for trade in self.broker.trades],
-                                                   'tp': [trade.tp for trade in self.broker.trades],
-                                                   'max_age': [trade.max_age for trade in self.broker.trades]
-                                                   }
-                                            ).set_index("id")
+        #trade = Trade(id=len(self.broker.trades), broker=self.broker, orders=orders, description=description)
+
+        #self.broker.trades.append(trade)
+        #self.broker.tradebook = pd.DataFrame(data={
+        #                                           'id': [trade.id for trade in self.broker.trades],
+        #                                           'status': [trade.status for trade in self.broker.trades], 
+        #                                           'description': [trade.description for trade in self.broker.trades], 
+        #                                           'pl': [trade.pl for trade in self.broker.trades], 
+        #                                           'created_at_iteration': [trade.created_at_iteration for trade in self.broker.trades],
+        #                                           'closed_at_iteration': [trade.closed_at_iteration for trade in self.broker.trades],
+        #                                           'sl': [trade.sl for trade in self.broker.trades],
+        #                                           'tp': [trade.tp for trade in self.broker.trades],
+        #                                           'max_age': [trade.max_age for trade in self.broker.trades]
+        #                                           }
+        #                                    ).set_index("id")
 
         return trade
 
