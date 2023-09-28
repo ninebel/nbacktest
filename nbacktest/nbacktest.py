@@ -9,22 +9,57 @@ class Backtest:
 
     def __init__(self,
                  data: pd.DataFrame,
-                 universe: list,
+                 universe: list[str],
                  strategy: object,
                  cash: float = 10_000,
+                 safety_lock: bool = False
                  ):
+        """
+        Create Backtest instance
 
-        data = self.check_params(universe, data.copy())
+        data: pd.DataFrame
+            Pandas dataframe containing OHLC data (must have the following columns: Open, High, Low, Close, Adj Close, Volume)
 
-        self.full_data = data.copy() # Simply a copy of dataframe
+        universe: list[str]
+            List containing all the tradeable assets you wish to backtest.
+            For example, if you want to create a strategy to trade FAANGs (Facebook/Meta, Amazon, Apple, Netflix and Alphabet), your universe is:
+            ["META", "AMZN", "AAPL", "NFLX", "GOOG"]
+
+        strategy: object
+            Your strategy class name (not instance, but class name).
+
+        cash: float, default 10_000
+            Initial amount of cash you want to start with
+
+        safety_lock: bool, default False
+            Special feature that blocks the user from altering backtest data inside a strategy. This is useful if the user is inexperienced, but on the other side, it makes it harder to export features created during strategy execution.
+            Example: Let's suppose you want to create a custom indicator directly on the self.data, setting the safety_lock to False will let you get the custom indicator with the
+            result dataframe, making it much easier to debug and analyze your backtest! 
+            If you set the safety_lock to True, the custom indicator data will not be returned with the result dataframe.
+
+        """
+
+        data = self.check_params(universe, data) # Check source data and return a copy of data
+
+        self.full_data = data # Simply a copy of dataframe
         self.result = None # Result dataframe (returned on the end of backtest)
         self.broker = Broker(universe=universe, cash=cash, data=self.full_data)
         self.universe = universe #list(data.columns.levels[1]) #data.columns = pd.MultiIndex.from_product([data.columns, ['AAPL']])
         self.strategy = strategy(self.broker)
+        self.safety_lock = safety_lock
+
+        # safety_lock is a special feature that blocks the user from altering backtest data inside a strategy. 
+        # This is useful if the user is inexperienced, but on the other side, it makes it harder to export features created during strategy execution.
+        # Example: Let's suppose you want to create a custom indicator directly on the self.data, disabling the safety_lock will let you get the custom indicator with the
+        # result dataframe, making it much easier to debug and analyze your backtest! 
+        # If you set the safety_lock to True, the custom indicator data would not be returned with the result dataframe.
+        self.safety_lock = safety_lock
         
 
     def check_params (self, universe, data):
         """ Check and fix input params """
+
+        data = data.copy() # Make a copy of data
 
         if len(universe) < 1:
             raise Exception("Your universe of stocks is lower than one. Please fill in the ticker of the stocks you wish to backtest.")
@@ -43,24 +78,36 @@ class Backtest:
 
     def run (self):
 
-        # Create lists for holding the values to be inserted as columns to the final result dataframe at the end of the backtest
+        # Create lists to hold the values to be inserted as columns to the final result dataframe at the end of the backtest
         iteration_list = []
         equity_list = []
 
         # Set strategy's fixed variables
         self.strategy.universe = self.universe
 
+        # Get column name for close
+        if "Adj Close" in [col[0] for col in self.full_data.columns]:
+            column_close = "Adj Close"
+        else:
+            column_close = "Close"
+
         # ----> MAIN LOOP
 
         for i in range (0, len(self.full_data), 1):
             
             # Set strategy's variables
-            self.strategy.data = self.full_data.iloc[0:i+1].copy()
+
+            if self.safety_lock:
+                self.strategy.data = self.full_data.iloc[0:i+1].copy()
+            else:
+                self.strategy.data = self.full_data.iloc[0:i+1]
+
             self.strategy.index = self.strategy.data.index
             self.strategy.open = self.strategy.data.loc[:, "Open"]
             self.strategy.high = self.strategy.data.loc[:, "High"]
             self.strategy.low = self.strategy.data.loc[:, "Low"]
-            self.strategy.close = self.strategy.data.loc[:, "Adj Close"]
+            self.strategy.close = self.strategy.data.loc[:, column_close]
+
             self.strategy.volume = self.strategy.data.loc[:, "Volume"]
             self.strategy.iteration = i # Tracks simulation step (which iteration are we running?)
 
@@ -105,10 +152,37 @@ class Backtest:
         self.result.loc[:, "_iteration"] = iteration_list
         self.result.loc[:, "_equity"] = equity_list
 
+        # Add orders markers
+        self.result.loc[:, "_buy"] = np.nan
+        self.result.loc[:, "_sell"] = np.nan
+
+        for order in self.broker.orders:
+
+            index = self.full_data.index[order.iteration]
+
+            if order.action == "buy":
+                self.result.loc[index , "_buy"] = 1
+            elif order.action == "sell":
+                self.result.loc[index , "_sell"] = 1
+
+        # Add trades markers
+        self.result.loc[:, "_trade"] = np.nan
+
+        for trade in self.broker.trades:
+            self.result.loc[ 
+                            (self.result["_iteration"] >= trade.created_at_iteration) & (self.result["_iteration"] <= trade.closed_at_iteration),
+                            "_trade"
+                            ] = 1
+
+
+
         return self.result # Return result
 
 
     def statistics (self):
+        """
+        Return some key statistics from backtest
+        """
 
         if self.result is None:
             print("Run the backtest before accessing statistics!")
@@ -160,7 +234,7 @@ class Broker:
 
         # -----> ORDER MANAGEMENT
 
-        self.orders = [] # All orders are stored here
+        self.orders: list[Order] = [] # All orders are stored here
 
         # Order history
         self.orderbook = pd.DataFrame(data={
@@ -189,7 +263,7 @@ class Broker:
 
          # -----> TRADE MANAGEMENT
 
-        self.trades = [] # All trades are stored here
+        self.trades: list[Trade] = [] # All trades are stored here
 
         # Trade history
         self.tradebook = pd.DataFrame(data={
