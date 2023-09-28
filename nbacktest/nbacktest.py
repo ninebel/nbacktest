@@ -532,7 +532,7 @@ class Trade:
         self.balance = 0
         self.pl = None # Profit/Loss per share (example: buy price - sell price)
         self.created_at_iteration = min(order.iteration for order in orders)
-        self.closed_at_iteration = -1
+        self.closed_at_iteration = np.inf
 
         # Order and position handling
         self.orders = []
