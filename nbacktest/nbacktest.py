@@ -12,7 +12,8 @@ class Backtest:
                  universe: list[str],
                  strategy: object,
                  cash: float = 10_000,
-                 safety_lock: bool = False
+                 safety_lock: bool = False,
+                 alt_data: pd.DataFrame = None
                  ):
         """
         Create Backtest instance
@@ -37,6 +38,8 @@ class Backtest:
             result dataframe, making it much easier to debug and analyze your backtest! 
             If you set the safety_lock to True, the custom indicator data will not be returned with the result dataframe.
 
+        alt_data: pd.DataFrame, default None
+            Dataframe having alternate data for your strategy. Alternate data is sliced according to the condition that alt_data.index <= data.index, where both alt_data's and data's indexes are datetimes.
         """
 
         data = self.check_params(universe, data) # Check source data and return a copy of data
@@ -47,14 +50,8 @@ class Backtest:
         self.universe = universe #list(data.columns.levels[1]) #data.columns = pd.MultiIndex.from_product([data.columns, ['AAPL']])
         self.strategy = strategy(self.broker)
         self.safety_lock = safety_lock
+        self.alt_data = alt_data # Alternate data
 
-        # safety_lock is a special feature that blocks the user from altering backtest data inside a strategy. 
-        # This is useful if the user is inexperienced, but on the other side, it makes it harder to export features created during strategy execution.
-        # Example: Let's suppose you want to create a custom indicator directly on the self.data, disabling the safety_lock will let you get the custom indicator with the
-        # result dataframe, making it much easier to debug and analyze your backtest! 
-        # If you set the safety_lock to True, the custom indicator data would not be returned with the result dataframe.
-        self.safety_lock = safety_lock
-        
 
     def check_params (self, universe, data):
         """ Check and fix input params """
@@ -98,9 +95,16 @@ class Backtest:
             # Set strategy's variables
 
             if self.safety_lock:
+                # Main data
                 self.strategy.data = self.full_data.iloc[0:i+1].copy()
+                # Alternate data
+                if self.alt_data is not None: self.strategy.alt_data = self.alt_data.loc[self.alt_data.index <= self.strategy.data.index[-1]].copy()
+
             else:
+                # Main data
                 self.strategy.data = self.full_data.iloc[0:i+1]
+                # Alternate data
+                if self.alt_data is not None: self.strategy.alt_data = self.alt_data.loc[self.alt_data.index <= self.strategy.data.index[-1]]
 
             self.strategy.index = self.strategy.data.index
             self.strategy.open = self.strategy.data.loc[:, "Open"]
