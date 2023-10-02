@@ -132,9 +132,11 @@ class Backtest:
                 # This is the last function run (Ran when the iteration is at the last candle of data)
                 if i == len(self.full_data) - 1: self.strategy.on_end()
 
-            # This is normally raised when next() tries something like: self.close[-3] when the index is not yet available 
-            except IndexError:
-                pass
+            # This is normally raised when next() tries something like: self.close[-3] when the index is not yet available
+            # Index Error won't stop backtest, you are probably trying to access data that is not available yet!
+            except IndexError as e:
+                print("Index Error: %s" % e)
+
             except Exception as e:
                 print(e)
                 raise e
