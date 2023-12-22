@@ -144,7 +144,8 @@ class Backtest:
 
             # Stop backtest if broker has no equity left!
             if self.broker.equity <= 0:
-                raise Exception("Out of money")
+                #raise Exception("Out of money") # Disabled for now
+                pass
 
             # Append params from backtest to result dataframe
             iteration_list.append(self.broker.iteration)
@@ -612,7 +613,7 @@ class Trade:
     # NOT BEING USED - Check if we can close a trade
     def check_close (self):
         """
-        Check is a trade caan  be closed. This function is NOT BEING USED
+        Check if a trade can be closed. This function is NOT BEING USED
         """
 
         if len(self.positions) == 0: 
