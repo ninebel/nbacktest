@@ -2,7 +2,6 @@ from abc import ABCMeta, abstractmethod
 import pandas as pd
 import numpy as np
 import datetime
-#from exceptions import *
 
 
 class Backtest:
@@ -11,25 +10,31 @@ class Backtest:
                  data: pd.DataFrame,
                  universe: list[str],
                  strategy: object,
-                 cash: float = 10_000,
+                 price_column: str = "Close",
+                 cash: float = 100_000,
                  safety_lock: bool = False,
-                 alt_data: pd.DataFrame = None
+                 alternate_data: pd.DataFrame = None,
                  ):
         """
         Create Backtest instance
 
-        data: pd.DataFrame
+        data: pd.DataFrame, no default value
             Pandas dataframe containing OHLC data (must have the following columns: Open, High, Low, Close, Adj Close, Volume)
 
-        universe: list[str]
+        universe: list[str], no default value
             List containing all the tradeable assets you wish to backtest.
             For example, if you want to create a strategy to trade FAANGs (Facebook/Meta, Amazon, Apple, Netflix and Alphabet), your universe is:
             ["META", "AMZN", "AAPL", "NFLX", "GOOG"]
 
-        strategy: object
+        strategy: object, no default value
             Your strategy class name (not instance, but class name).
 
-        cash: float, default 10_000
+        price_column: str, default "Close"
+            Name of the reference price column used in backtesting.
+            It is recommended that price_column is the closing price, the price taken from this column will be used for filling order price and calculating position value.
+            Example: price_column = "Close" or price_column = "Adj Close"
+
+        cash: float, default 100_000
             Initial amount of cash you want to start with
 
         safety_lock: bool, default False
@@ -38,11 +43,12 @@ class Backtest:
             result dataframe, making it much easier to debug and analyze your backtest! 
             If you set the safety_lock to True, the custom indicator data will not be returned with the result dataframe.
 
-        alt_data: pd.DataFrame, default None
-            Dataframe having alternate data for your strategy. Alternate data is sliced according to the condition that alt_data.index <= data.index, where both alt_data's and data's indexes are datetimes.
+        alternate_data: pd.DataFrame, default None
+            Dataframe having alternate data for your strategy. Alternate data is sliced according to the condition that alternate_data.index <= data.index, where both alternate_data's and data's indexes are datetimes.
+
         """
 
-        data = self.check_params(universe, data) # Check source data and return a copy of data
+        data = self.check_parameters(universe, data) # Check source data and return a copy of data
 
         self.full_data = data # Simply a copy of dataframe
         self.result = None # Result dataframe (returned on the end of backtest)
@@ -50,24 +56,49 @@ class Backtest:
         self.universe = universe #list(data.columns.levels[1]) #data.columns = pd.MultiIndex.from_product([data.columns, ['AAPL']])
         self.strategy = strategy(self.broker)
         self.safety_lock = safety_lock
-        self.alt_data = alt_data # Alternate data
+        self.alternate_data = alternate_data # Alternate data
+
+        # Set price column name (it is recommended that reference price column is the closing price)
+        if price_column is not None:
+
+            self.price_column = price_column
+
+        else:
+
+            if "Adj Close" in self.full_data.columns:
+                self.price_column = "Adj Close"
+            else:
+                self.price_column = "Close"
 
 
-    def check_params (self, universe, data):
-        """ Check and fix input params """
+
+    def check_parameters (self, universe, data, price_column):
+        """ Check and fix input parameters """
 
         data = data.copy() # Make a copy of data
 
-        if len(universe) < 1:
-            raise Exception("Your universe of stocks is lower than one. Please fill in the ticker of the stocks you wish to backtest.")
-        
+        # Check universe
+        if len(universe) < 1: raise Exception("Your universe of stocks is lower than one. Please fill in the ticker of the stocks you wish to backtest.")
+
+
+        # Check price column
+        if price_column is None: 
+
+            raise Exception("price_column was not defined!")
+
+        elif price_column not in data.columns:
+
+            raise Exception("price_column does not exist!")
+
+
         # Check if data is in multindex format, in case not, then convert it assuming you are backtesting only one stock
         if type(data.columns) != pd.core.indexes.multi.MultiIndex:
             if len(universe) == 1:
                 print("Converting data to multi index!")
                 data.columns = pd.MultiIndex.from_product([ data.columns, [universe[0]] ]) # Convert index to multindex          
             else:
-                raise Exception("You are backtesting more than one stock, but your data is not in multi index format")
+                raise Exception("You are backtesting more than one stock, but your data is not in multi index format!")
+
 
         return data
 
@@ -75,18 +106,16 @@ class Backtest:
 
     def run (self):
 
+        """ 
+        Main Loop for running the backtest
+        """
+
         # Create lists to hold the values to be inserted as columns to the final result dataframe at the end of the backtest
         iteration_list = []
         equity_list = []
 
         # Set strategy's fixed variables
         self.strategy.universe = self.universe
-
-        # Get column name for close
-        if "Adj Close" in [col[0] for col in self.full_data.columns]:
-            column_close = "Adj Close"
-        else:
-            column_close = "Close"
 
         # ----> MAIN LOOP
 
@@ -98,21 +127,16 @@ class Backtest:
                 # Main data
                 self.strategy.data = self.full_data.iloc[0:i+1].copy()
                 # Alternate data
-                if self.alt_data is not None: self.strategy.alt_data = self.alt_data.loc[self.alt_data.index <= self.strategy.data.index[-1]].copy()
+                if self.alternate_data is not None: self.strategy.alternate_data = self.alternate_data.loc[self.alternate_data.index <= self.strategy.data.index[-1]].copy()
 
             else:
                 # Main data
                 self.strategy.data = self.full_data.iloc[0:i+1]
                 # Alternate data
-                if self.alt_data is not None: self.strategy.alt_data = self.alt_data.loc[self.alt_data.index <= self.strategy.data.index[-1]]
+                if self.alternate_data is not None: self.strategy.alternate_data = self.alternate_data.loc[self.alternate_data.index <= self.strategy.data.index[-1]]
 
             self.strategy.index = self.strategy.data.index
-            self.strategy.open = self.strategy.data.loc[:, "Open"]
-            self.strategy.high = self.strategy.data.loc[:, "High"]
-            self.strategy.low = self.strategy.data.loc[:, "Low"]
-            self.strategy.close = self.strategy.data.loc[:, column_close]
-
-            self.strategy.volume = self.strategy.data.loc[:, "Volume"]
+            self.strategy.price = self.strategy.data.loc[:, self.price_column]
             self.strategy.iteration = i # Tracks simulation step (which iteration are we running?)
 
             # ----> RUN STRATEGY (Run inside a try so in case an error happens, backtest does not fail/stop)
