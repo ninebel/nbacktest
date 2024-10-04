@@ -5,6 +5,8 @@ This library was developed focusing on backtesting multiple stocks
 
 *Currently a work in progress!*
 
-## Install with pip 
+## Installation
 
-You can install this repository with pip using: pip install git+https://github.com/ninebel/nbacktest.git@main
+You can install this repository from GitHub with pip: pip install git+https://github.com/ninebel/nbacktest.git@main
+
+In case you want to install from source with pip, download this repo, navigate to the root folder and then: pip install .
