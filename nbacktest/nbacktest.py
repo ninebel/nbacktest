@@ -14,6 +14,7 @@ class Backtest:
                  cash: float = 100_000,
                  safety_lock: bool = False,
                  alternate_data: pd.DataFrame = None,
+                 slicing_column: str = None
                  ):
         """
         Create Backtest instance
@@ -44,8 +45,10 @@ class Backtest:
             If you set the safety_lock to True, the custom indicator data will not be returned with the result dataframe.
 
         alternate_data: pd.DataFrame, default None
-            Dataframe having alternate data for your strategy. Alternate data is sliced according to the condition that alternate_data.index <= data.index, where both alternate_data's and data's indexes are datetimes.
+            Dataframe having alternate data for your strategy. Alternate data is sliced according to the condition that alternate_data[slicing_column] <= data.index, where both alternate_data's and data's indexes are datetimes.
 
+        slicing_column: str, default None
+            Column used for slicing the alternate_data, following the condition that alternate_data[slicing_column] <= data.index
         """
 
         data = self.check_parameters(universe, data, price_column) # Check source data and return a copy of data
@@ -57,7 +60,8 @@ class Backtest:
         self.strategy = strategy(self.broker)
         self.price_column = price_column
         self.safety_lock = safety_lock
-        self.alternate_data = alternate_data # Alternate data
+        self.alternate_data = alternate_data
+        self.slicing_column = slicing_column
 
 
     def check_parameters (self, universe, data, price_column):
@@ -115,13 +119,13 @@ class Backtest:
                 # Main data
                 self.strategy.data = self.full_data.iloc[0:i+1].copy()
                 # Alternate data
-                if self.alternate_data is not None: self.strategy.alternate_data = self.alternate_data.loc[self.alternate_data.index <= self.strategy.data.index[-1]].copy()
+                if self.alternate_data is not None: self.strategy.alternate_data = self.alternate_data.loc[self.alternate_data[self.slicing_column]  <= self.strategy.data.index[-1]].copy()
 
             else:
                 # Main data
                 self.strategy.data = self.full_data.iloc[0:i+1]
                 # Alternate data
-                if self.alternate_data is not None: self.strategy.alternate_data = self.alternate_data.loc[self.alternate_data.index <= self.strategy.data.index[-1]]
+                if self.alternate_data is not None: self.strategy.alternate_data = self.alternate_data.loc[self.alternate_data[self.slicing_column] <= self.strategy.data.index[-1]]
 
             self.strategy.index = self.strategy.data.index
             self.strategy.price = self.strategy.data.loc[:, self.price_column]
