@@ -281,7 +281,6 @@ class Broker:
         self.df_orderbook = pd.DataFrame(
             data={
                 'ID': [order.id for order in self.orders],
-                'STATUS': [order.status for order in self.orders],
                 'ITERATION': [order.iteration for order in self.orders],
                 'ACTION': [order.action for order in self.orders],
                 'TICKER': [order.ticker for order in self.orders],
@@ -290,6 +289,7 @@ class Broker:
                 'COMMISSION': [order.commission for order in self.orders],
                 'SLIPPAGE': [order.slippage for order in self.orders],
                 'TOTAL': [order.total for order in self.orders],
+                'STATUS': [order.status for order in self.orders],
             }).set_index('ID')
 
         # Update df_positions
@@ -357,7 +357,6 @@ class Broker:
         quantity = abs(quantity) if (action == "buy") else -abs(quantity)
         price = (self.last_price[ticker] + slippage) if (action == "buy") else (self.last_price[ticker] - slippage)
         total = -abs(quantity*price) - commission if (action == "buy") else abs(quantity*price) - commission
-        status = "filled"  # Added status for order
 
         # ----> CHECK CALCULATED PARAMS
         if price < 0:
@@ -379,7 +378,7 @@ class Broker:
                       commission=commission,
                       slippage=slippage,
                       total=total,
-                      status=status  # Added status for order
+                      status="filled"  # Assume orders are instantaneously filled
                      )
 
         # Update cash balance. Total<0 if buying, Total>0 if selling
@@ -479,7 +478,7 @@ class Order:
                   status: str = "open"
                   ) -> None:
         """
-        Creates an order, all parameters are checked and edited. The current "status" parameter is not implemented, so it doesn't affect the backtest at all!
+        Creates an order, all parameters are checked and edited
         """
 
         self.id = id
@@ -562,7 +561,6 @@ class Trade:
         self.df_orderbook = pd.DataFrame(
             data={
                 'ID': [order.id for order in self.orders],
-                'STATUS': [order.status for order in self.orders],
                 'ITERATION': [order.iteration for order in self.orders],
                 'ACTION': [order.action for order in self.orders],
                 'TICKER': [order.ticker for order in self.orders],
@@ -571,6 +569,7 @@ class Trade:
                 'COMMISSION': [order.commission for order in self.orders],
                 'SLIPPAGE': [order.slippage for order in self.orders],
                 'TOTAL': [order.total for order in self.orders],
+                'STATUS': [order.status for order in self.orders],
             }).set_index('ID')
 
         self.df_positions = Broker._calc_positions(df_orderbook=self.df_orderbook, last_price=self.broker.last_price)
@@ -634,11 +633,7 @@ class Strategy (metaclass=ABCMeta):
         self.df_positions: dict = None
         self.data: pd.DataFrame = None
         self.index: pd.DataFrame = None
-        self.open: pd.DataFrame = None
-        self.high: pd.DataFrame = None
-        self.low: pd.DataFrame = None
-        self.close: pd.DataFrame = None
-        self.volume: pd.DataFrame = None
+        self.price: pd.DataFrame = None
         self.iteration: int = None
 
 
