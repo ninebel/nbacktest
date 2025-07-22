@@ -102,8 +102,8 @@ class Backtest:
         """
 
         # Create lists to hold the values to be inserted as columns to the final result dataframe at the end of the backtest
-        iteration_list = []
-        equity_list = []
+        iterations = []
+        equities = []
 
         # Set strategy's fixed variables
         self.strategy.universe = self.universe
@@ -161,16 +161,16 @@ class Backtest:
                 pass
 
             # Append params from backtest to result dataframe
-            iteration_list.append(self.broker.iteration)
-            equity_list.append(self.broker.equity)
+            iterations.append(self.broker.iteration)
+            equities.append(self.broker.equity)
 
 
         # Set dataframe result
         self.result = self.strategy.data.copy()
 
         # Create columns for result dataframe
-        self.result.loc[:, "_iteration"] = iteration_list
-        self.result.loc[:, "_equity"] = equity_list
+        self.result.loc[:, "_iteration"] = iterations
+        self.result.loc[:, "_equity"] = equities
 
         # Add orders markers
         self.result.loc[:, "_buy"] = np.nan
@@ -208,17 +208,21 @@ class Backtest:
             print("Run the backtest before accessing statistics!")
             return
         
-        df_wins = self.broker.df_tradebook.query("pnl > 0")
-        df_losses = self.broker.df_tradebook.query("pnl <= 0")
-
+        df_wins = self.broker.df_tradebook.query("PNL > 0")
+        df_losses = self.broker.df_tradebook.query("PNL <= 0")
         n_won = len(df_wins)
         n_lost = len(df_losses)
         n_total = n_won + n_lost
-        win_rate = n_won/n_total
-        avg_abs_return = self.broker.df_tradebook["pnl"].sum() / n_total # This is also the expected value per trade (EV)
-
-        avg_abs_return_per_win = df_wins["pnl"].sum() / n_won
-        avg_abs_return_per_lost = df_losses["pnl"].sum() / n_lost
+        if n_total > 0:
+            win_rate = n_won/n_total
+            avg_abs_return = self.broker.df_tradebook["PNL"].sum() / n_total # This is also the expected value per trade (EV)
+            avg_abs_return_per_win = df_wins["PNL"].sum() / n_won
+            avg_abs_return_per_lost = df_losses["PNL"].sum() / n_lost
+        else:
+            win_rate = 0
+            avg_abs_return = 0
+            avg_abs_return_per_win = 0
+            avg_abs_return_per_lost = 0
 
 
         statistics = {
@@ -286,18 +290,7 @@ class Broker:
         self.trades: list[Trade] = [] # All trades are stored here
 
         # Trade history
-        self.df_tradebook = pd.DataFrame(data={
-                                            'ID': [],
-                                            'STATUS': [], 
-                                            'DESCRIPTION': [], 
-                                            'PNL': [], 
-                                            'CREATED_AT_ITERATION': [],
-                                            'CLOSED_AT_ITERATION': [],
-                                            'STOP_LOSS': [],
-                                            'TAKE_PROFIT': [],
-                                            'MAX_AGE': []
-                                            }
-                                     ).set_index('ID')
+        self.df_tradebook = None
     
 
     def update (self,
@@ -336,19 +329,36 @@ class Broker:
         # Update df_tradebook
         if len(self.trades) >= 1:
 
-            self.df_tradebook = pd.DataFrame(data={
-                                                    'ID': [trade.id for trade in self.trades],
-                                                    'STATUS': [trade.status for trade in self.trades],
-                                                    'DESCRIPTION': [trade.description for trade in self.trades],
-                                                    'PNL': [trade.pl for trade in self.trades],
-                                                    'CREATED_AT_ITERATION': [trade.created_at_iteration for trade in self.trades],
-                                                    'CLOSED_AT_ITERATION': [trade.closed_at_iteration for trade in self.trades],
-                                                    'STOP_LOSS': [trade.sl for trade in self.trades],
-                                                    'TAKE_PROFIT': [trade.tp for trade in self.trades],
-                                                    'MAX_AGE': [trade.max_age for trade in self.trades],
-                                                    'REASON_CLOSED': [trade.reason_closed for trade in self.trades],
-                                                }).set_index('ID')
+            self.df_tradebook = pd.DataFrame(
+                data={
+                    'ID': [trade.id for trade in self.trades],
+                    'STATUS': [trade.status for trade in self.trades],
+                    'DESCRIPTION': [trade.description for trade in self.trades],
+                    'PNL': [trade.pl for trade in self.trades],
+                    'CREATED_AT_ITERATION': [trade.created_at_iteration for trade in self.trades],
+                    'CLOSED_AT_ITERATION': [trade.closed_at_iteration for trade in self.trades],
+                    'STOP_LOSS': [trade.sl for trade in self.trades],
+                    'TAKE_PROFIT': [trade.tp for trade in self.trades],
+                    'MAX_AGE': [trade.max_age for trade in self.trades],
+                    'REASON_CLOSED': [trade.reason_closed for trade in self.trades],
+                }).set_index('ID')
+            
+        # Update df_orderbook
+        if len(self.orders) >= 1:
 
+            self.df_orderbook = pd.DataFrame(
+                data={
+                    'ID': [order.id for order in self.orders],
+                    'STATUS': [order.status for order in self.orders],
+                    'ITERATION': [order.description for order in self.orders],
+                    'ACTION': [order.pl for order in self.orders],
+                    'TICKER': [order.created_at_iteration for order in self.orders],
+                    'QUANTITY': [order.closed_at_iteration for order in self.orders],
+                    'PRICE': [order.sl for order in self.orders],
+                    'COMMISSION': [order.tp for order in self.orders],
+                    'SLIPPAGE': [order.max_age for order in self.orders],
+                    'TOTAL': [order.id for order in self.orders],
+                }).set_index('ID')
 
     def place_order (self,
                      action: str,
@@ -447,18 +457,20 @@ class Broker:
 
         self.trades.append(trade)
 
-        self.df_tradebook = pd.DataFrame(data={
-                                            'ID': [trade.id for trade in self.trades],
-                                            'STATUS': [trade.status for trade in self.trades], 
-                                            'DESCRIPTION': [trade.description for trade in self.trades], 
-                                            'PNL': [trade.pl for trade in self.trades], 
-                                            'CREATED_AT_ITERATION': [trade.created_at_iteration for trade in self.trades],
-                                            'CLOSED_AT_ITERATION': [trade.closed_at_iteration for trade in self.trades],
-                                            'STOP_LOSS': [trade.sl for trade in self.trades],
-                                            'TAKE_PROFIT': [trade.tp for trade in self.trades],
-                                            'MAX_AGE': [trade.max_age for trade in self.trades]
-                                            }
-                                    ).set_index('ID')
+        self.df_tradebook = pd.DataFrame(
+            data={
+                'ID': [trade.id for trade in self.trades],
+                'STATUS': [trade.status for trade in self.trades], 
+                'DESCRIPTION': [trade.description for trade in self.trades], 
+                'PNL': [trade.pl for trade in self.trades], 
+                'CREATED_AT_ITERATION': [trade.created_at_iteration for trade in self.trades],
+                'CLOSED_AT_ITERATION': [trade.closed_at_iteration for trade in self.trades],
+                'STOP_LOSS': [trade.sl for trade in self.trades],
+                'TAKE_PROFIT': [trade.tp for trade in self.trades],
+                'MAX_AGE': [trade.max_age for trade in self.trades],
+                'REASON_CLOSED': [trade.reason_closed for trade in self.trades],
+            }
+        ).set_index('ID')
         
         return trade
 
@@ -473,7 +485,7 @@ class Broker:
 
         Get df_positions organized by ticker, like:
         +----------+------------+------------------+----------+
-        | ticker   |   quantity |   total_invested |    value |
+        | TICKER   |   QUANTITY |   TOTAL_INVESTED |    VALUE |
         |----------+------------+------------------+----------|
         | AAPL     |        -10 |           451.2  | -1642.95 |
         | GOOG     |        -10 |           549.13 | -1272.53 |
@@ -573,11 +585,7 @@ class Trade:
 
         # Initialize empty order list and orderbook dataframe
         self.orders = []
-        self.df_orderbook = pd.DataFrame(data={
-            'ID':[], 'ITERATION':[], 'ACTION':[], 'TICKER':[],
-            'QUANTITY':[], 'PRICE':[], 'COMMISSION':[],
-            'SLIPPAGE':[], 'TOTAL':[], 'STATUS':[]
-        }).set_index('ID')
+        self.df_orderbook = None
 
         # Track current net positions by ticker
         self.df_positions = pd.DataFrame(data={
@@ -596,10 +604,6 @@ class Trade:
     def add_order(self, order: Order):
         
         self.orders.append(order)
-        self.df_orderbook.loc[order.id] = [
-            order.iteration, order.action, order.ticker, order.quantity,
-            order.price, order.commission, order.slippage, order.total, order.status
-        ]
         # Update trade cash balance with order total
         self.balance += order.total
         return self.orders
@@ -609,6 +613,20 @@ class Trade:
         """
         Update position values and check if stop conditions are triggered
         """
+        self.df_orderbook = pd.DataFrame(
+            data={
+                'ID': [order.id for order in self.orders],
+                'STATUS': [order.status for order in self.orders],
+                'ITERATION': [order.description for order in self.orders],
+                'ACTION': [order.pl for order in self.orders],
+                'TICKER': [order.created_at_iteration for order in self.orders],
+                'QUANTITY': [order.closed_at_iteration for order in self.orders],
+                'PRICE': [order.sl for order in self.orders],
+                'COMMISSION': [order.tp for order in self.orders],
+                'SLIPPAGE': [order.max_age for order in self.orders],
+                'TOTAL': [order.id for order in self.orders],
+            }).set_index('ID')
+
         self.df_positions = Broker._calc_positions(df_orderbook=self.df_orderbook, last_price=self.broker.last_price)
         self.pnl = Broker._calc_equity(balance=self.balance, df_positions=self.df_positions)
         self.check_stop()
