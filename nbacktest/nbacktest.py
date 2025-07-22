@@ -355,7 +355,7 @@ class Broker:
                     'TICKER': [order.ticker for order in self.orders],
                     'QUANTITY': [order.quantity for order in self.orders],
                     'PRICE': [order.price for order in self.orders],
-                    'COMMISSION': [order.comission for order in self.orders],
+                    'COMMISSION': [order.commission for order in self.orders],
                     'SLIPPAGE': [order.slippage for order in self.orders],
                     'TOTAL': [order.total for order in self.orders],
                 }).set_index('ID')
