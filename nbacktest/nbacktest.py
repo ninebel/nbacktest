@@ -241,7 +241,6 @@ class Broker:
                  cash: float,
                  data: pd.DataFrame
                  ):
-        
 
         # -----> STRATEGY MANAGEMENT
 
@@ -264,9 +263,10 @@ class Broker:
                                             'TICKER':[],
                                             'QUANTITY':[],
                                             'PRICE':[],
-                                            'COMISSION':[],
+                                            'COMMISSION':[],
                                             'SLIPPAGE':[],
-                                            'TOTAL':[]
+                                            'TOTAL':[],
+                                            'STATUS':[]  # Added STATUS for orders
                                            }
                                      ).set_index('ID')
 
@@ -337,17 +337,17 @@ class Broker:
         if len(self.trades) >= 1:
 
             self.df_tradebook = pd.DataFrame(data={
-                                                'ID': [trade.id for trade in self.trades],
-                                                'STATUS': [trade.status for trade in self.trades], 
-                                                'DESCRIPTION': [trade.description for trade in self.trades], 
-                                                'PNL': [trade.pl for trade in self.trades], 
-                                                'CREATED_AT_ITERATION': [trade.created_at_iteration for trade in self.trades],
-                                                'CLOSED_AT_ITERATION': [trade.closed_at_iteration for trade in self.trades],
-                                                'STOP_LOSS': [trade.sl for trade in self.trades],
-                                                'TAKE_PROFIT': [trade.tp for trade in self.trades],
-                                                'MAX_AGE': [trade.max_age for trade in self.trades]
-                                                }
-                                        ).set_index('ID')
+                                                    'ID': [trade.id for trade in self.trades],
+                                                    'STATUS': [trade.status for trade in self.trades],
+                                                    'DESCRIPTION': [trade.description for trade in self.trades],
+                                                    'PNL': [trade.pl for trade in self.trades],
+                                                    'CREATED_AT_ITERATION': [trade.created_at_iteration for trade in self.trades],
+                                                    'CLOSED_AT_ITERATION': [trade.closed_at_iteration for trade in self.trades],
+                                                    'STOP_LOSS': [trade.sl for trade in self.trades],
+                                                    'TAKE_PROFIT': [trade.tp for trade in self.trades],
+                                                    'MAX_AGE': [trade.max_age for trade in self.trades],
+                                                    'REASON_CLOSED': [trade.reason_closed for trade in self.trades],
+                                                }).set_index('ID')
 
 
     def place_order (self,
@@ -388,6 +388,7 @@ class Broker:
         quantity = abs(quantity) if (action == "buy") else -abs(quantity)
         price = (self.last_price[ticker] + slippage) if (action == "buy") else (self.last_price[ticker] - slippage)
         total = -abs(quantity*price) - commission if (action == "buy") else abs(quantity*price) - commission
+        status = "filled"  # Added status for order
 
         # ----> CHECK CALCULATED PARAMS
         if price < 0:
@@ -408,7 +409,8 @@ class Broker:
                       price=price,
                       commission=commission,
                       slippage=slippage,
-                      total=total
+                      total=total,
+                      status=status  # Added status for order
                      )
 
         # Update cash balance. Total<0 if buying, Total>0 if selling
@@ -426,7 +428,8 @@ class Broker:
                                         order.price,
                                         order.commission,
                                         order.slippage,
-                                        order.total
+                                        order.total,
+                                        order.status
                                        ]
 
         # Update broker equity, df_positions and trades
@@ -514,7 +517,8 @@ class Order:
                   price: float,
                   commission: float,
                   slippage: float,
-                  total: float
+                  total: float,
+                  status: str = "open"
                   ) -> None:
         """
         Creates an order, all parameters are checked and edited. The current "status" parameter is not implemented, so it doesn't affect the backtest at all!
@@ -529,9 +533,26 @@ class Order:
         self.commission = commission
         self.slippage = slippage
         self.total = total
+        self.status = status
 
 
 class Trade:
+    """
+    A trade is a container for grouped orders representing a single operation (e.g., long or short).
+    Tracks status, PNL, and closure conditions such as stop loss, take profit, max age, or manual.
+
+    Attributes:
+        id (int): Unique identifier of the trade.
+        broker (Broker): Reference to the broker managing the trade.
+        orders (list[Order]): List of executed orders in the trade.
+        df_orderbook (pd.DataFrame): Log of all orders related to the trade.
+        df_positions (pd.DataFrame): Current open positions in the trade.
+        description (str): Optional text describing the trade purpose or logic.
+        stop_loss (float): Stop loss threshold.
+        take_profit (float): Take profit threshold.
+        max_age (int): Maximum duration in iterations before the trade is closed.
+        reason_closed (str): Reason the trade was closed ("manual", "stop_loss", "take_profit", or "max_age").
+    """
 
     def __init__ (self,
                   id: int,
@@ -539,149 +560,104 @@ class Trade:
                   orders: list[Order],
                   description: str = ""
                   ):
-        """
-        A trade is the same as an operation in the common sense, they are ways of grouping orders (like a buy, then sell order are a LONG trade).
-        Trades are supposed to be very flexible and customizable, so you track a lot of different trading strategies using them.
-        """
-
-        # Variables
+        
         self.id = id
         self.broker = broker
-        self.status = "open" # possible options: "open" / "closed"
-        self.description = description # A simple description for the trade. Reason for the trade? What are you trading?
+        self.status = "open"
+        self.description = description
         self.balance = 0
-        self.pnl = None # Profit/Loss per share (example: buy price - sell price)
-        self.created_at_iteration = min(order.iteration for order in orders)
-        self.closed_at_iteration = np.inf
+        self.pnl = None
+        self.created_at_iteration = min(order.iteration for order in orders) # earliest order
+        self.closed_at_iteration = np.inf # latest order
+        self.reason_closed = None
 
-        # Order and position handling
+        # Initialize empty order list and orderbook dataframe
         self.orders = []
-
-        # Order history
         self.df_orderbook = pd.DataFrame(data={
-                                            'ID':[],
-                                            'ITERATION':[],
-                                            'ACTION':[],
-                                            'TICKER':[],
-                                            'QUANTITY':[],
-                                            'PRICE':[],
-                                            'COMISSION':[],
-                                            'SLIPPAGE':[],
-                                            'TOTAL':[]
-                                           }
-                                     ).set_index('ID')
+            'ID':[], 'ITERATION':[], 'ACTION':[], 'TICKER':[],
+            'QUANTITY':[], 'PRICE':[], 'COMMISSION':[],
+            'SLIPPAGE':[], 'TOTAL':[], 'STATUS':[]
+        }).set_index('ID')
 
-        # All open df_positions
+        # Track current net positions by ticker
         self.df_positions = pd.DataFrame(data={
-                                            'QUANTITY':[],
-                                            'VALUE':[]
-                                           }
-                                     )
+            'QUANTITY':[], 'VALUE':[]
+        })
 
         for order in orders:
             self.add_order(order)
 
-        # Stops - Automatically close trade/operation
+        # Set default stop conditions to disabled
         self.stop_loss = -np.inf
-        self.take_profit = np.inf # Take Profit
-        self.max_age = np.inf # Max age in bars/candles/iterations
+        self.take_profit = np.inf
+        self.max_age = np.inf
+
+
+    def add_order(self, order: Order):
         
-
-    def add_order (self,
-                   order: Order
-                   ):
-        """
-        Adds an order to the trade and update df_orderbook.
-        """
-        # Append newly created order to a list of orders
         self.orders.append(order)
-
-        # Add new 'order row' to df_orderbook (this works as an incremental load)
         self.df_orderbook.loc[order.id] = [
-                                        order.iteration,
-                                        order.action,
-                                        order.ticker,
-                                        order.quantity,
-                                        order.price,
-                                        order.commission,
-                                        order.slippage,
-                                        order.total
-                                       ]
-
+            order.iteration, order.action, order.ticker, order.quantity,
+            order.price, order.commission, order.slippage, order.total, order.status
+        ]
+        # Update trade cash balance with order total
         self.balance += order.total
-
         return self.orders
 
 
-    def update (self):
+    def update(self):
         """
-        Update trade df_positions and PNL. This function is called every iteration by the broker.
-        """       
-
-        self.df_positions = Broker._calc_positions(df_orderbook=self.df_orderbook, last_price=self.broker.last_price) # Helper function from broker to calculate new df_positions
-        self.pnl = Broker._calc_equity(balance=self.balance, df_positions=self.df_positions) # Helper function from broker to calculate PNL/trade equity
+        Update position values and check if stop conditions are triggered
+        """
+        self.df_positions = Broker._calc_positions(df_orderbook=self.df_orderbook, last_price=self.broker.last_price)
+        self.pnl = Broker._calc_equity(balance=self.balance, df_positions=self.df_positions)
         self.check_stop()
 
 
-    # NOT BEING USED - Check if we can close a trade
-    def check_close (self):
+    def check_stop(self):
         """
-        Check if a trade can be closed. This function is NOT BEING USED
+        Check if any of the stop conditions are met and close the trade accordingly.
         """
+        if self.pnl <= self.stop_loss:
+            self.reason_closed = "stop_loss"
+            self.close()
+            return
+        if self.pnl >= self.take_profit:
+            self.reason_closed = "take_profit"
+            self.close()
+            return
+        if self.broker.iteration - self.created_at_iteration >= self.max_age:
+            self.reason_closed = "max_age"
+            self.close()
 
-        if len(self.df_positions) == 0: 
-            return True
-        elif len(self.df_positions) != 0:
-            for i in range (len(self.df_positions)):
-                if self.df_positions.iloc[0]["QUANTITY"] != 0:
-                    return False
-            return True
-        return False
-
-
-    def check_stop (self):
+    def close(self):
         """
-        Checks if any stop condition is met, if so, call self.close() in order to fully close the trade.
-        a) Price check (stop_loss and take_profit): check if our PNL hit stop loss or take profit
-        b) Trade max. age: check if trade has been opened a self.max_age bars/iterations ago, if so close the trade
+        Close the trade, this will execute counter orders for all open positions and mark the trade as closed. 
         """
 
-        # Price stop
-        if self.pnl <= self.stop_loss: self.close()
-        elif self.pnl >= self.take_profit: self.close()
+        if self.reason_closed is None:
+            self.reason_closed = "manual"
 
-        # Max age stop (if trade has been running for max_age iterations/bars, close it!)
-        if self.broker.iteration - self.created_at_iteration >= self.max_age: self.close()
+        # Mark trade as closed and execute counter orders for open positions
+        self.status = "closed"
 
-
-    def close (self):
-        """
-        Close a trade. If there any open df_positions, orders are placed to close df_positions. When these are completed, the trade is considered to be closed.
-        If there are no open df_positions, final PNL and status will be updated, closing the trade.
-        """
-        self.status = "closed" # Keep this line here, if it is at the end of the function the broker will be stuck in a loop trying to close this trade if sl or tp is activated!
-
-        # Close still open df_positions
-        for i in range (len(self.df_positions)):
-
+        for i in range(len(self.df_positions)):
             position = self.df_positions.iloc[i]
             quantity = position["QUANTITY"]
             ticker = position.name
 
-            # If its a LONG position, close with a SELL/SHORT order
-            if quantity > 0: 
-                order = self.broker.place_order(action="sell", ticker=ticker, quantity=-1*quantity)
+            # If trade is long (buy), sell the position
+            if quantity > 0:
+                order = self.broker.place_order(action="sell", ticker=ticker, quantity=-1 * quantity)
+            # If trade is short (sell), buy to cover the position
+            if quantity < 0:
+                order = self.broker.place_order(action="buy", ticker=ticker, quantity=-1 * quantity)
 
-            # If its a SHORT position, close with a BUY/SHORT order
-            if quantity < 0: 
-                order = self.broker.place_order(action="buy", ticker=ticker, quantity=-1*quantity)
-            
             self.add_order(order)
 
-        # Effectively close trade, calculating final PNL and updating status
         self.closed_at_iteration = max(order.iteration for order in self.orders)
-        self.df_positions = Broker._calc_positions(df_orderbook=self.df_orderbook, last_price=self.broker.last_price) # Helper function from broker to calculate new df_positions
-        self.pnl = Broker._calc_equity(balance=self.balance, df_positions=self.df_positions) # Helper function from broker to calculate equity
+        self.df_positions = Broker._calc_positions(df_orderbook=self.df_orderbook, last_price=self.broker.last_price)
+        self.pnl = Broker._calc_equity(balance=self.balance, df_positions=self.df_positions)
 
 
 class Strategy (metaclass=ABCMeta):
