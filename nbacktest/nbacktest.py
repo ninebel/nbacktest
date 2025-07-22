@@ -56,7 +56,7 @@ class Backtest:
         self.full_data = data # Simply a copy of dataframe
         self.result = None # Result dataframe (returned on the end of backtest)
         self.broker = Broker(universe=universe, cash=cash, data=self.full_data)
-        self.universe = universe #list(data.columns.levels[1]) #data.columns = pd.MultiIndex.from_product([data.columns, ['AAPL']])
+        self.universe = universe
         self.strategy = strategy(self.broker)
         self.price_column = price_column
         self.safety_lock = safety_lock
@@ -64,7 +64,7 @@ class Backtest:
         self.slicing_column = slicing_column
 
 
-    def _check_parameters(self,
+    def check_parameters(self,
                           universe: list[str],
                           data: pd.DataFrame,
                           price_column: str
