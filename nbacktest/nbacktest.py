@@ -350,14 +350,14 @@ class Broker:
                 data={
                     'ID': [order.id for order in self.orders],
                     'STATUS': [order.status for order in self.orders],
-                    'ITERATION': [order.description for order in self.orders],
-                    'ACTION': [order.pl for order in self.orders],
-                    'TICKER': [order.created_at_iteration for order in self.orders],
-                    'QUANTITY': [order.closed_at_iteration for order in self.orders],
-                    'PRICE': [order.sl for order in self.orders],
-                    'COMMISSION': [order.tp for order in self.orders],
-                    'SLIPPAGE': [order.max_age for order in self.orders],
-                    'TOTAL': [order.id for order in self.orders],
+                    'ITERATION': [order.iteration for order in self.orders],
+                    'ACTION': [order.action for order in self.orders],
+                    'TICKER': [order.ticker for order in self.orders],
+                    'QUANTITY': [order.quantity for order in self.orders],
+                    'PRICE': [order.price for order in self.orders],
+                    'COMMISSION': [order.comission for order in self.orders],
+                    'SLIPPAGE': [order.slippage for order in self.orders],
+                    'TOTAL': [order.total for order in self.orders],
                 }).set_index('ID')
 
     def place_order (self,
@@ -617,14 +617,14 @@ class Trade:
             data={
                 'ID': [order.id for order in self.orders],
                 'STATUS': [order.status for order in self.orders],
-                'ITERATION': [order.description for order in self.orders],
-                'ACTION': [order.pl for order in self.orders],
-                'TICKER': [order.created_at_iteration for order in self.orders],
-                'QUANTITY': [order.closed_at_iteration for order in self.orders],
-                'PRICE': [order.sl for order in self.orders],
-                'COMMISSION': [order.tp for order in self.orders],
-                'SLIPPAGE': [order.max_age for order in self.orders],
-                'TOTAL': [order.id for order in self.orders],
+                'ITERATION': [order.iteration for order in self.orders],
+                'ACTION': [order.action for order in self.orders],
+                'TICKER': [order.ticker for order in self.orders],
+                'QUANTITY': [order.quantity for order in self.orders],
+                'PRICE': [order.price for order in self.orders],
+                'COMMISSION': [order.commission for order in self.orders],
+                'SLIPPAGE': [order.slippage for order in self.orders],
+                'TOTAL': [order.total for order in self.orders],
             }).set_index('ID')
 
         self.df_positions = Broker._calc_positions(df_orderbook=self.df_orderbook, last_price=self.broker.last_price)
