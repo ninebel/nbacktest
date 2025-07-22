@@ -290,7 +290,7 @@ class Broker:
                 'SLIPPAGE': [order.slippage for order in self.orders],
                 'TOTAL': [order.total for order in self.orders],
                 'STATUS': [order.status for order in self.orders],
-            }).set_index('ID')
+            })#.set_index('ID')
 
         # Update df_positions
         self.df_positions = self._calc_positions(df_orderbook=self.df_orderbook, last_price=self.last_price)
@@ -316,7 +316,7 @@ class Broker:
                 'TAKE_PROFIT': [trade.tp for trade in self.trades],
                 'MAX_AGE': [trade.max_age for trade in self.trades],
                 'REASON_CLOSED': [trade.reason_closed for trade in self.trades],
-            }).set_index('ID')
+            })#.set_index('ID')
 
 
     def place_order (self,
@@ -415,7 +415,7 @@ class Broker:
                 'MAX_AGE': [trade.max_age for trade in self.trades],
                 'REASON_CLOSED': [trade.reason_closed for trade in self.trades],
             }
-        ).set_index('ID')
+        )#.set_index('ID')
         
         return trade
 
@@ -436,10 +436,8 @@ class Broker:
         | GOOG     |        -10 |           549.13 | -1272.53 |
         +----------+------------+------------------+----------+
         """
-        df_positions = df_orderbook.groupby(['TICKER']).sum(numeric_only=True).drop(columns=["ITERATION", "PRICE"]).rename(columns={"TOTAL":"TOTAL_INVESTED"})
-
+        df_positions = df_orderbook.groupby(['TICKER']).sum(numeric_only=True)[["QUANTITY", "TOTAL"]].rename(columns={"TOTAL":"TOTAL_INVESTED"})
         df_positions = df_positions[df_positions["QUANTITY"] != 0] # Remove all rows where quantity is 0
-
         df_positions["VALUE"] = np.nan
 
         for ticker in df_positions.index:
@@ -570,7 +568,7 @@ class Trade:
                 'SLIPPAGE': [order.slippage for order in self.orders],
                 'TOTAL': [order.total for order in self.orders],
                 'STATUS': [order.status for order in self.orders],
-            }).set_index('ID')
+            })#.set_index('ID')
 
         self.df_positions = Broker._calc_positions(df_orderbook=self.df_orderbook, last_price=self.broker.last_price)
         self.pnl = Broker._calc_equity(balance=self.balance, df_positions=self.df_positions)
