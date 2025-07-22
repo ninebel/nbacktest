@@ -479,7 +479,7 @@ class Broker:
         | GOOG     |        -10 |           549.13 | -1272.53 |
         +----------+------------+------------------+----------+
         """
-        df_positions = df_orderbook.groupby(['TICKER']).sum(numeric_only=True).drop(columns=["iteration","price"]).rename(columns={"total":"total_invested"})
+        df_positions = df_orderbook.groupby(['TICKER']).sum(numeric_only=True).drop(columns=["ITERATION", "PRICE"]).rename(columns={"TOTAL":"TOTAL_INVESTED"})
 
         df_positions = df_positions[df_positions["QUANTITY"] != 0] # Remove all rows where quantity is 0
 
