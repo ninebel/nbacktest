@@ -2,6 +2,8 @@
 import numpy as np
 import pandas as pd
 import datetime
+from nbacktest.core.broker import Broker
+
 
 class Order:
 

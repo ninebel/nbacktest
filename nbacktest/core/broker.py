@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import datetime
 import uuid
+from nbacktest.core.entities import Order, Trade
 
 
 class Broker:
