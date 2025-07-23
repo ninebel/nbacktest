@@ -1,3 +1,8 @@
+import numpy as np
+import pandas as pd
+import datetime
+
+
 class Backtest:
 
     def __init__(self,
