@@ -146,7 +146,7 @@ class Trade:
 
     def __init__ (self,
                   broker: "Broker",
-                  orders: list[Order],
+                  orders: list["Order"],
                   notes: str = ""
                   ):
         
@@ -161,13 +161,12 @@ class Trade:
         self._reason_closed = None
         self._orders = []
         self._positions = {}
-
-        for order in orders:
-            self._add_order(order)
-
         self._stop_loss = None
         self._take_profit = None
         self._max_age = None
+
+        for order in orders:
+            self._add_order(order)
 
 
     @property

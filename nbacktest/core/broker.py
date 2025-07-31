@@ -24,7 +24,7 @@ class BaseBroker:
 
         # Update positions based on filled orders
         self._positions = self._get_positions(self._orders, self._last_prices)
-        self._positions_total = sum(pos["value"] for pos in self._positions.values())
+        self._positions_total = sum(position["value"] for position in self._positions.values())
         self._equity = self._balance + self._positions_total
 
         # Update open trades
