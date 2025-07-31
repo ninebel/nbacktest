@@ -228,10 +228,10 @@ class Trade:
         """
         Check if any of the stop conditions are met and close the trade accordingly.
         """
-        if self._pnl is not None:
+        if self._stop_loss is not None:
             if self._pnl <= self._stop_loss:
                 self.close(reason_closed="STOP_LOSS")
-        if self._pnl is not None:
+        if self._take_profit is not None:
             if self._pnl >= self._take_profit:
                 self.close(reason_closed="TAKE_PROFIT")
         if self._max_age is not None:
