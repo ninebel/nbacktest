@@ -1,20 +1,19 @@
 [project]
 name = "nbacktest"
-version = "0.8"
+version = "1.0.0"
 authors = [
-  { name="Ninebel", email="myemail@email.com" },
+  {name="Ninebel"},
 ]
 description = "A Python library for backtesting stocks"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
     "numpy>=1.23.5",
-    "pandas>=1.5.2",
+    "pandas>=2",
 ]
-
 [project.urls]
 "Homepage" = "https://github.com/ninebel/nbacktest"
 
