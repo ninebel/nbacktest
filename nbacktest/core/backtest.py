@@ -154,8 +154,8 @@ class Backtest:
             })
 
         self._result = pd.DataFrame(results)
-        self._orderbook = build_orderbook(self._broker.orders)
-        self._tradebook = build_tradebook(self._broker.trades)
+        self._orderbook = build_orderbook(self._broker._orders)
+        self._tradebook = build_tradebook(self._broker._trades)
         return self._result
 
 
