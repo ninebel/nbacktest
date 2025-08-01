@@ -133,7 +133,8 @@ class Order:
     "closed_iteration": "_closed_iteration",
     "reason_closed": "_reason_closed",
     "orders": ("_orders", tuple),
-    "positions": "_orders",
+    "positions": ("_positions", tuple),
+    "positions_total": "_positions_total",
     "stop_loss": "_stop_loss",
     "take_profit": "_take_profit",
     "max_age": "_max_age"
@@ -155,12 +156,13 @@ class Trade:
         self._status = "OPEN" # OPEN / CLOSED
         self._notes = notes
         self._balance = 0
-        self._pnl = None
+        self._pnl = 0
         self._created_iteration = None
         self._closed_iteration = None
         self._reason_closed = None
         self._orders = []
         self._positions = {}
+        self._positions_total = 0
         self._stop_loss = None
         self._take_profit = None
         self._max_age = None
@@ -206,11 +208,8 @@ class Trade:
         self._orders.append(order)
         order._trade_id = self._id
         self._created_iteration = min(order.requested_iteration for order in self._orders)
-        
-        if order._action == "BUY":
-            self._balance -= order._filled_quantity * order._filled_price + order._filled_fee
-        elif order._action == "SELL":
-            self._balance += order._filled_quantity * order._filled_price - order._filled_fee
+        self._balance += order._filled_total
+        self._update()
         return True
 
 
@@ -230,19 +229,22 @@ class Trade:
         """
         if self._stop_loss is not None:
             if self._pnl <= self._stop_loss:
-                self.close(reason_closed="STOP_LOSS")
+                self._close(reason_closed="STOP_LOSS")
         if self._take_profit is not None:
             if self._pnl >= self._take_profit:
-                self.close(reason_closed="TAKE_PROFIT")
+                self._close(reason_closed="TAKE_PROFIT")
         if self._max_age is not None:
             if (self._broker._iteration - self._created_iteration) >= self._max_age:
-                self.close(reason_closed="MAX_AGE")
+                self._close(reason_closed="MAX_AGE")
  
     
     def _close(self, reason_closed="MANUAL"):
         """
         Close the trade, this will execute counter orders for all open positions and mark the trade as closed. 
         """
+        if self._status == "CLOSED":
+            raise Exception("Trade is already closed")
+
         self._reason_closed = reason_closed
         self._status = "CLOSED"
         # Use the latest positions dict to close all open positions
@@ -256,8 +258,7 @@ class Trade:
                 self._add_order(order)
 
         self._closed_iteration = max(order._filled_iteration for order in self._orders)
-        self._positions = self._broker._get_positions(self._orders, self._broker._last_prices)
-        self._positions_total = sum(position["value"] for position in self._positions.values())
-        self._pnl = self._balance + self._positions_total
+        self._update()
         return True
+
 
