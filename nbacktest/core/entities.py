@@ -231,12 +231,15 @@ class Trade:
         if self._stop_loss is not None:
             if self._pnl <= self._stop_loss:
                 self._close(reason_closed="STOP_LOSS")
+                return
         if self._take_profit is not None:
             if self._pnl >= self._take_profit:
                 self._close(reason_closed="TAKE_PROFIT")
+                return
         if self._max_age is not None:
             if (self._broker._iteration - self._created_iteration) >= self._max_age:
                 self._close(reason_closed="MAX_AGE")
+                return
  
     
     def _close(self, reason_closed="MANUAL"):
