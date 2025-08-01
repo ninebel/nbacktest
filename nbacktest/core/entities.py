@@ -220,7 +220,8 @@ class Trade:
         self._positions = self._broker._get_positions(self._orders, self._broker._last_prices)
         self._positions_total = sum(position["value"] for position in self._positions.values())
         self._pnl = self._balance + self._positions_total
-        self._check_stop()
+        if self._status == "OPEN":
+            self._check_stop()
 
     
     def _check_stop(self):
@@ -258,9 +259,7 @@ class Trade:
                 self._add_order(order)
 
         self._closed_iteration = max(order._filled_iteration for order in self._orders)
-        self._positions = self._broker._get_positions(self._orders, self._broker._last_prices)
-        self._positions_total = sum(position["value"] for position in self._positions.values())
-        self._pnl = self._balance + self._positions_total
+        self._update()
         return True
 
 
