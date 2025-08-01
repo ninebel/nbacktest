@@ -6,7 +6,16 @@ from .broker import BacktestBroker
 
 
 
-@auto_properties({"strategy": "_strategy"})
+@auto_properties({"strategy": "_strategy",
+                  "result": "_result",
+                  "data": "_data",
+                  "universe": "_universe",
+                  "price_column": "_price_column",
+                  "alternative_data": "_alternative_data",
+                  "slicing_column": "_slicing_column",
+                  "_orderbook": "orderbook",
+                  "_tradebook": "tradebook"
+})
 class Backtest:
     def __init__(self,
                  data: pd.DataFrame,
@@ -66,11 +75,11 @@ class Backtest:
         self._price_column = price_column
         self._alternative_data = alternative_data
         self._slicing_column = slicing_column
-
         self._broker = BacktestBroker(universe=universe, cash=cash, data=self._data)
         self._strategy = strategy_class(self._broker)
-
         self._result = None
+        self._orderbook = None
+        self._tradebook = None
 
     
     def _validate_parameters(self, universe, data, price_column) -> pd.DataFrame:
@@ -144,8 +153,9 @@ class Backtest:
                 'EQUITY': self._broker._equity
             })
 
-        # Store final results in a DataFrame
         self._result = pd.DataFrame(results)
+        self._orderbook = build_orderbook(self._broker.orders)
+        self._tradebook = build_tradebook(self._broker.trades)
         return self._result
 
 
@@ -157,15 +167,15 @@ class Backtest:
         if self._result is None:
             print("Run the backtest before accessing statistics!")
             return
-        
-        df_wins = self._broker.df_tradebook.query("PNL > 0")
-        df_losses = self._broker.df_tradebook.query("PNL <= 0")
+
+        df_wins = self._tradebook.query("PNL > 0")
+        df_losses = self._tradebook.query("PNL <= 0")
         n_won = len(df_wins)
         n_lost = len(df_losses)
         n_total = n_won + n_lost
         if n_total > 0:
             win_rate = n_won/n_total
-            avg_abs_return = self._broker.df_tradebook["PNL"].sum() / n_total # This is also the expected value per trade (EV)
+            avg_abs_return = self._tradebook["PNL"].sum() / n_total # This is also the expected value per trade (EV)
             avg_abs_return_per_win = df_wins["PNL"].sum() / n_won
             avg_abs_return_per_lost = df_losses["PNL"].sum() / n_lost
         else:
