@@ -13,8 +13,8 @@ from .broker import BacktestBroker
                   "price_column": "_price_column",
                   "alternative_data": "_alternative_data",
                   "slicing_column": "_slicing_column",
-                  "_orderbook": "orderbook",
-                  "_tradebook": "tradebook"
+                  "orderbook": "_orderbook",
+                  "tradebook": "_tradebook"
 })
 class Backtest:
     def __init__(self,
