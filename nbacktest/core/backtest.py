@@ -178,68 +178,65 @@ class Backtest:
 
     def get_trade_statistics(self) -> dict:
         """
-        Compute statistics for individual trades in dollar profit terms (PnL).
+        Statistics based on individual trades (PNL in dollar terms).
         """
         if self._tradebook is None:
-            print("Run the backtest before accessing trade statistics!")
+            print("No trades available.")
             return
 
         pnl = self._tradebook["PNL"]
+        wins = pnl[pnl > 0]
+        losses = pnl[pnl <= 0]
 
-        df_wins = self._tradebook.query("PNL > 0")
-        df_losses = self._tradebook.query("PNL <= 0")
+        n_won = len(wins)
+        n_lost = len(losses)
+        n_total = len(pnl)
 
-        n_won = len(df_wins)
-        n_lost = len(df_losses)
-        n_total = n_won + n_lost
+        if n_total == 0:
+            stats = {k: np.nan for k in [
+                "mean_profit", "median_profit", "mean_profit_win",
+                "mean_profit_loss", "median_profit_win", "median_profit_loss",
+                "std_profit", "mad_profit", "skewness", "kurtosis",
+                "mean_median_gap", "profit_over_vol"
+            ]}
+            stats.update({"n_won": 0, "n_lost": 0, "n_total": 0, "win_rate": np.nan})
+            return self._convert_dict(stats)
 
-        if n_total > 0:
-            win_rate = n_won / n_total
+        # Core metrics
+        mean_profit = pnl.mean()
+        median_profit = pnl.median()
+        mean_profit_win = wins.mean() if n_won > 0 else np.nan
+        mean_profit_loss = losses.mean() if n_lost > 0 else np.nan
+        median_profit_win = wins.median() if n_won > 0 else np.nan
+        median_profit_loss = losses.median() if n_lost > 0 else np.nan
 
-            avg_profit = pnl.mean()
-            avg_profit_win = df_wins["PNL"].mean() if n_won > 0 else np.nan
-            avg_profit_loss = df_losses["PNL"].mean() if n_lost > 0 else np.nan
+        std_profit = pnl.std()
+        mad_profit = scipy.stats.median_abs_deviation(pnl, scale='normal')
+        skewness = scipy.stats.skew(pnl)
+        kurtosis = scipy.stats.kurtosis(pnl)
+        mean_median_gap = mean_profit - median_profit
 
-            median_profit = pnl.median()
-            median_profit_win = df_wins["PNL"].median() if n_won > 0 else np.nan
-            median_profit_loss = df_losses["PNL"].median() if n_lost > 0 else np.nan
-
-            std_dev = pnl.std()
-            mad_dev = scipy.stats.median_abs_deviation(pnl, scale="normal")
-            downside_dev = np.sqrt(np.mean(np.minimum(pnl, 0)**2))
-            upside_dev = np.sqrt(np.mean(np.maximum(pnl, 0)**2))
-
-            skewness = scipy.stats.skew(pnl)
-            kurtosis = scipy.stats.kurtosis(pnl)
-
-            mean_median_gap = avg_profit - median_profit
-
-            avg_profit_over_vol = avg_profit / std_dev if std_dev else np.nan
-            median_profit_over_vol = median_profit / std_dev if std_dev else np.nan
-        else:
-            win_rate = avg_profit = avg_profit_win = avg_profit_loss = median_profit = median_profit_win = median_profit_loss = np.nan
-            std_dev = mad_dev = downside_dev = upside_dev = skewness = kurtosis = mean_median_gap = avg_profit_over_vol = median_profit_over_vol = np.nan
+        mean_profit_over_vol = mean_profit / std_profit if std_profit else np.nan
+        median_profit_over_vol = median_profit / std_profit if std_profit else np.nan
 
         stats = {
             "n_won": n_won,
             "n_lost": n_lost,
             "n_total": n_total,
-            "win_rate": win_rate,
-            "avg_profit": avg_profit,
-            "avg_profit_per_win": avg_profit_win,
-            "avg_profit_per_loss": avg_profit_loss,
+            "win_rate": n_won / n_total,
+            "mean_profit": mean_profit,
             "median_profit": median_profit,
-            "median_profit_per_win": median_profit_win,
-            "median_profit_per_loss": median_profit_loss,
-            "std_dev": std_dev,
-            "mad_dev": mad_dev,
-            "downside_dev": downside_dev,
-            "upside_dev": upside_dev,
+            "mean_profit_win": mean_profit_win,
+            "mean_profit_loss": mean_profit_loss,
+            "median_profit_win": median_profit_win,
+            "median_profit_loss": median_profit_loss,
+            "std_profit": std_profit,
+            "mad_profit": mad_profit,
             "skewness": skewness,
             "kurtosis": kurtosis,
             "mean_median_gap": mean_median_gap,
-            "avg_profit_over_vol": avg_profit_over_vol,
-            "median_profit_over_vol": median_profit_over_vol
+            "mean_profit_over_vol": mean_profit_over_vol,
+            "median_profit_over_vol": median_profit_over_vol,
         }
 
         return self._convert_dict(stats)
@@ -247,37 +244,47 @@ class Backtest:
     
     def get_equity_statistics_dollar(self) -> dict:
         """
-        Compute equity statistics in absolute dollar terms.
-        Useful for analyzing raw dollar movement of the portfolio.
+        Statistics computed directly from the equity curve (dollar terms).
         """
         if self._result is None:
-            print("Run the backtest before accessing equity statistics!")
+            print("Run backtest before accessing equity stats.")
             return
 
         equity = self._result["EQUITY"]
-        diff = equity.diff().dropna()
 
-        if len(diff) > 0:
-            total_profit = equity.iloc[-1] - equity.iloc[0]
-            std_dev = diff.std()
-            mad_dev = scipy.stats.median_abs_deviation(diff, scale="normal")
-            skewness = scipy.stats.skew(diff)
-            kurtosis = scipy.stats.kurtosis(diff)
-            mean_median_gap = diff.mean() - diff.median()
+        if len(equity) < 2:
+            return self._convert_dict({"total_profit": np.nan})
 
-            profit_over_vol = diff.mean() / std_dev if std_dev else np.nan
-            max_drawdown = (equity - equity.cummax()).min()
-        else:
-            total_profit = std_dev = mad_dev = skewness = kurtosis = mean_median_gap = profit_over_vol = max_drawdown = np.nan
+        # Dollar changes
+        profit_series = equity.diff().dropna()
+
+        mean_profit = profit_series.mean()
+        median_profit = profit_series.median()
+        std_profit = profit_series.std()
+        mad_profit = scipy.stats.median_abs_deviation(profit_series, scale="normal")
+        skewness = scipy.stats.skew(profit_series)
+        kurtosis = scipy.stats.kurtosis(profit_series)
+        mean_median_gap = mean_profit - median_profit
+
+        total_profit = equity.iloc[-1] - equity.iloc[0]
+        mean_profit_over_vol = mean_profit / std_profit if std_profit else np.nan
+        median_profit_over_vol = median_profit / std_profit if std_profit else np.nan
+
+        # Drawdown (dollar)
+        dd = equity - equity.cummax()
+        max_drawdown = dd.min()  # negative number
 
         stats = {
             "total_profit": total_profit,
-            "std_dev": std_dev,
-            "mad_dev": mad_dev,
+            "mean_profit": mean_profit,
+            "median_profit": median_profit,
+            "std_profit": std_profit,
+            "mad_profit": mad_profit,
             "skewness": skewness,
             "kurtosis": kurtosis,
             "mean_median_gap": mean_median_gap,
-            "profit_over_vol": profit_over_vol,
+            "mean_profit_over_vol": mean_profit_over_vol,
+            "median_profit_over_vol": median_profit_over_vol,
             "max_drawdown": max_drawdown
         }
 
@@ -286,39 +293,44 @@ class Backtest:
     
     def get_equity_statistics_return(self) -> dict:
         """
-        Compute equity statistics in percentage return terms.
-        Return = percent change in equity.
+        Percent-return-based statistics from equity curve.
         """
         if self._result is None:
-            print("Run the backtest before accessing equity statistics!")
+            print("Run backtest before accessing equity return stats.")
             return
 
         equity = self._result["EQUITY"]
         returns = equity.pct_change().dropna()
 
-        if len(returns) > 0:
-            total_return = (equity.iloc[-1] / equity.iloc[0]) - 1
-            std_return = returns.std()
-            mad_return = scipy.stats.median_abs_deviation(returns, scale="normal")
-            skewness = scipy.stats.skew(returns)
-            kurtosis = scipy.stats.kurtosis(returns)
-            mean_median_gap = returns.mean() - returns.median()
+        if len(returns) == 0:
+            return self._convert_dict({"total_return": np.nan})
 
-            return_over_vol = returns.mean() / std_return if std_return else np.nan
-            max_drawdown = (equity / equity.cummax() - 1).min()
-        else:
-            total_return = std_return = mad_return = skewness = kurtosis = mean_median_gap = return_over_vol = max_drawdown = np.nan
+        mean_return = returns.mean()
+        median_return = returns.median()
+        std_return = returns.std()
+        mad_return = scipy.stats.median_abs_deviation(returns, scale="normal")
+        skewness = scipy.stats.skew(returns)
+        kurtosis = scipy.stats.kurtosis(returns)
+        mean_median_gap = mean_return - median_return
+
+        total_return = (equity.iloc[-1] / equity.iloc[0]) - 1
+        mean_return_over_vol = mean_return / std_return if std_return else np.nan
+        median_return_over_vol = median_return / std_return if std_return else np.nan
+
+        max_drawdown = (equity / equity.cummax() - 1).min()
 
         stats = {
             "total_return": total_return,
+            "mean_return": mean_return,
+            "median_return": median_return,
             "std_return": std_return,
             "mad_return": mad_return,
             "skewness": skewness,
             "kurtosis": kurtosis,
             "mean_median_gap": mean_median_gap,
-            "return_over_vol": return_over_vol,
+            "mean_return_over_vol": mean_return_over_vol,
+            "median_return_over_vol": median_return_over_vol,
             "max_drawdown": max_drawdown
         }
 
         return self._convert_dict(stats)
-
