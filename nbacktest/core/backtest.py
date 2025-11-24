@@ -159,39 +159,57 @@ class Backtest:
         return self._result
 
 
+
     def statistics(self):
         """
         Return some key statistics from backtest
         """
-
+    
         if self._result is None:
             print("Run the backtest before accessing statistics!")
             return
-
+    
         df_wins = self._tradebook.query("PNL > 0")
         df_losses = self._tradebook.query("PNL <= 0")
+    
         n_won = len(df_wins)
         n_lost = len(df_losses)
         n_total = n_won + n_lost
+    
         if n_total > 0:
-            win_rate = n_won/n_total
-            avg_abs_return = self._tradebook["PNL"].sum() / n_total # This is also the expected value per trade (EV)
-            avg_abs_return_per_win = df_wins["PNL"].sum() / n_won
-            avg_abs_return_per_lost = df_losses["PNL"].sum() / n_lost
+    
+            win_rate = n_won / n_total
+    
+            # Means
+            avg_abs_return = self._tradebook["PNL"].mean()
+            avg_abs_return_per_win = df_wins["PNL"].mean() if n_won > 0 else np.nan
+            avg_abs_return_per_lost = df_losses["PNL"].mean() if n_lost > 0 else np.nan
+    
+            # Medians
+            median_abs_return = self._tradebook["PNL"].median()
+            median_abs_return_per_win = df_wins["PNL"].median() if n_won > 0 else np.nan
+            median_abs_return_per_lost = df_losses["PNL"].median() if n_lost > 0 else np.nan
+    
         else:
-            win_rate = 0
-            avg_abs_return = 0
-            avg_abs_return_per_win = 0
-            avg_abs_return_per_lost = 0
-
+            win_rate = np.nan
+            avg_abs_return = np.nan
+            avg_abs_return_per_win = np.nan
+            avg_abs_return_per_lost = np.nan
+            median_abs_return = np.nan
+            median_abs_return_per_win = np.nan
+            median_abs_return_per_lost = np.nan
+    
         statistics = {
-                      "n_won": n_won,
-                      "n_lost": n_lost,
-                      "n_total": n_total,
-                      "win_rate": win_rate,
-                      "avg_abs_return": avg_abs_return,
-                      "avg_abs_return_per_win": avg_abs_return_per_win,
-                      "avg_abs_return_per_lost": avg_abs_return_per_lost
-                     }
-        
+            "n_won": n_won,
+            "n_lost": n_lost,
+            "n_total": n_total,
+            "win_rate": win_rate,
+            "avg_abs_return": avg_abs_return,
+            "avg_abs_return_per_win": avg_abs_return_per_win,
+            "avg_abs_return_per_lost": avg_abs_return_per_lost,
+            "median_abs_return": median_abs_return,
+            "median_abs_return_per_win": median_abs_return_per_win,
+            "median_abs_return_per_lost": median_abs_return_per_lost
+        }
+    
         return statistics
