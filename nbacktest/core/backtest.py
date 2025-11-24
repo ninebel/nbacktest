@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import statsmodels
+import scipy
 from ..utils import *
 from .broker import BacktestBroker
 
@@ -159,16 +161,16 @@ class Backtest:
         return self._result
 
 
-
     def statistics(self):
         """
-        Return some key statistics from backtest
+        Return key statistics and advanced deviation metrics from backtest
         """
     
         if self._result is None:
             print("Run the backtest before accessing statistics!")
             return
     
+        pnl = self._tradebook["PNL"]
         df_wins = self._tradebook.query("PNL > 0")
         df_losses = self._tradebook.query("PNL <= 0")
     
@@ -181,14 +183,33 @@ class Backtest:
             win_rate = n_won / n_total
     
             # Means
-            avg_abs_return = self._tradebook["PNL"].mean()
+            avg_abs_return = pnl.mean()
             avg_abs_return_per_win = df_wins["PNL"].mean() if n_won > 0 else np.nan
             avg_abs_return_per_lost = df_losses["PNL"].mean() if n_lost > 0 else np.nan
     
             # Medians
-            median_abs_return = self._tradebook["PNL"].median()
+            median_abs_return = pnl.median()
             median_abs_return_per_win = df_wins["PNL"].median() if n_won > 0 else np.nan
             median_abs_return_per_lost = df_losses["PNL"].median() if n_lost > 0 else np.nan
+    
+            # Standard Deviation
+            std_return = pnl.std()
+    
+            # Median Absolute Deviation
+            mad_return = scipy.stats.median_abs_deviation(pnl, scale='normal')
+    
+            # Downside deviation (only negative returns)
+            downside_dev = np.sqrt(np.mean(np.minimum(pnl, 0)**2))
+    
+            # Upside deviation (only positive returns)
+            upside_dev = np.sqrt(np.mean(np.maximum(pnl, 0)**2))
+    
+            # Skewness and Kurtosis
+            skewness = scipy.stats.skew(pnl)
+            kurt = scipy.stats.kurtosis(pnl)
+    
+            # Mean vs Median gap
+            mean_median_gap = avg_abs_return - median_abs_return
     
         else:
             win_rate = np.nan
@@ -198,6 +219,13 @@ class Backtest:
             median_abs_return = np.nan
             median_abs_return_per_win = np.nan
             median_abs_return_per_lost = np.nan
+            std_return = np.nan
+            mad_return = np.nan
+            downside_dev = np.nan
+            upside_dev = np.nan
+            skewness = np.nan
+            kurt = np.nan
+            mean_median_gap = np.nan
     
         statistics = {
             "n_won": n_won,
@@ -209,7 +237,15 @@ class Backtest:
             "avg_abs_return_per_lost": avg_abs_return_per_lost,
             "median_abs_return": median_abs_return,
             "median_abs_return_per_win": median_abs_return_per_win,
-            "median_abs_return_per_lost": median_abs_return_per_lost
+            "median_abs_return_per_lost": median_abs_return_per_lost,
+            "std_return": std_return,
+            "mad_return": mad_return,
+            "downside_deviation": downside_dev,
+            "upside_deviation": upside_dev,
+            "skewness": skewness,
+            "kurtosis": kurt,
+            "mean_median_gap": mean_median_gap
         }
     
         return statistics
+
