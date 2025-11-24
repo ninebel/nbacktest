@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import statsmodels
+import scipy
 from ..utils import *
 from .broker import BacktestBroker
 
