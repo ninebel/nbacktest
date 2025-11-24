@@ -161,6 +161,20 @@ class Backtest:
         self._tradebook = build_tradebook(self._broker._trades)
         return self._result
 
+    def _to_native(self, value):
+        """
+        Helper: convert numpy scalar → python float/int
+        """
+        if isinstance(value, (np.floating, np.integer)):
+            return value.item()
+        return value
+
+    def _convert_dict(self, d: dict) -> dict:
+        """
+        Helper: convert numpy scalar → python float/int
+        """
+        return {k: self._to_native(v) for k, v in d.items()}
+
 
     def get_trade_statistics(self) -> dict:
         """
@@ -182,7 +196,6 @@ class Backtest:
         if n_total > 0:
             win_rate = n_won / n_total
 
-            # Profit metrics
             avg_profit = pnl.mean()
             avg_profit_win = df_wins["PNL"].mean() if n_won > 0 else np.nan
             avg_profit_loss = df_losses["PNL"].mean() if n_lost > 0 else np.nan
@@ -191,28 +204,23 @@ class Backtest:
             median_profit_win = df_wins["PNL"].median() if n_won > 0 else np.nan
             median_profit_loss = df_losses["PNL"].median() if n_lost > 0 else np.nan
 
-            # Deviations
             std_dev = pnl.std()
             mad_dev = scipy.stats.median_abs_deviation(pnl, scale="normal")
-            downside_dev = np.sqrt(np.mean(np.minimum(pnl, 0) ** 2))
-            upside_dev = np.sqrt(np.mean(np.maximum(pnl, 0) ** 2))
+            downside_dev = np.sqrt(np.mean(np.minimum(pnl, 0)**2))
+            upside_dev = np.sqrt(np.mean(np.maximum(pnl, 0)**2))
 
-            # Distribution
             skewness = scipy.stats.skew(pnl)
             kurtosis = scipy.stats.kurtosis(pnl)
 
-            # Gaps
             mean_median_gap = avg_profit - median_profit
 
-            # Ratios (profit efficiency)
             avg_profit_over_vol = avg_profit / std_dev if std_dev else np.nan
             median_profit_over_vol = median_profit / std_dev if std_dev else np.nan
-
         else:
             win_rate = avg_profit = avg_profit_win = avg_profit_loss = median_profit = median_profit_win = median_profit_loss = np.nan
             std_dev = mad_dev = downside_dev = upside_dev = skewness = kurtosis = mean_median_gap = avg_profit_over_vol = median_profit_over_vol = np.nan
 
-        return {
+        stats = {
             "n_won": n_won,
             "n_lost": n_lost,
             "n_total": n_total,
@@ -234,17 +242,20 @@ class Backtest:
             "median_profit_over_vol": median_profit_over_vol
         }
 
+        return self._convert_dict(stats)
+
     
     def get_equity_statistics_dollar(self) -> dict:
         """
         Compute equity statistics in absolute dollar terms.
+        Useful for analyzing raw dollar movement of the portfolio.
         """
         if self._result is None:
             print("Run the backtest before accessing equity statistics!")
             return
 
         equity = self._result["EQUITY"]
-        diff = equity.diff().dropna()  # daily profit/loss in $
+        diff = equity.diff().dropna()
 
         if len(diff) > 0:
             total_profit = equity.iloc[-1] - equity.iloc[0]
@@ -254,15 +265,12 @@ class Backtest:
             kurtosis = scipy.stats.kurtosis(diff)
             mean_median_gap = diff.mean() - diff.median()
 
-            # Sharpe-like metric
             profit_over_vol = diff.mean() / std_dev if std_dev else np.nan
-
             max_drawdown = (equity - equity.cummax()).min()
-
         else:
             total_profit = std_dev = mad_dev = skewness = kurtosis = mean_median_gap = profit_over_vol = max_drawdown = np.nan
 
-        return {
+        stats = {
             "total_profit": total_profit,
             "std_dev": std_dev,
             "mad_dev": mad_dev,
@@ -273,10 +281,12 @@ class Backtest:
             "max_drawdown": max_drawdown
         }
 
+        return self._convert_dict(stats)
+
     
     def get_equity_statistics_return(self) -> dict:
         """
-        Compute equity statistics using percentage returns.
+        Compute equity statistics in percentage return terms.
         Return = percent change in equity.
         """
         if self._result is None:
@@ -294,15 +304,12 @@ class Backtest:
             kurtosis = scipy.stats.kurtosis(returns)
             mean_median_gap = returns.mean() - returns.median()
 
-            # Sharpe-like metric
             return_over_vol = returns.mean() / std_return if std_return else np.nan
-
             max_drawdown = (equity / equity.cummax() - 1).min()
-
         else:
             total_return = std_return = mad_return = skewness = kurtosis = mean_median_gap = return_over_vol = max_drawdown = np.nan
 
-        return {
+        stats = {
             "total_return": total_return,
             "std_return": std_return,
             "mad_return": mad_return,
@@ -312,3 +319,6 @@ class Backtest:
             "return_over_vol": return_over_vol,
             "max_drawdown": max_drawdown
         }
+
+        return self._convert_dict(stats)
+
