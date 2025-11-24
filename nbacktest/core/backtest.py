@@ -196,7 +196,7 @@ class Backtest:
             std_return = pnl.std()
     
             # Median Absolute Deviation
-            mad_return = statsmodels.robust.mad(pnl)
+            mad_return = scipy.stats.median_abs_deviation(pnl, scale='normal')
     
             # Downside deviation (only negative returns)
             downside_dev = np.sqrt(np.mean(np.minimum(pnl, 0)**2))
@@ -206,7 +206,7 @@ class Backtest:
     
             # Skewness and Kurtosis
             skewness = scipy.stats.skew(pnl)
-            kurt = kurtosis(pnl)
+            kurt = scipy.stats.kurtosis(pnl)
     
             # Mean vs Median gap
             mean_median_gap = avg_abs_return - median_abs_return
