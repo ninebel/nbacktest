@@ -1,6 +1,6 @@
 [project]
 name = "nbacktest"
-version = "1.1.0"
+version = "1.2.0"
 authors = [
   {name="Ninebel"},
 ]
@@ -13,6 +13,7 @@ classifiers = [
 dependencies = [
     "numpy>=1.23.5",
     "pandas>=2",
+    "statsmodels>=0.14",
 ]
 [project.urls]
 "Homepage" = "https://github.com/ninebel/nbacktest"

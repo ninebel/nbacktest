@@ -133,8 +133,10 @@ class Order:
     "closed_iteration": "_closed_iteration",
     "reason_closed": "_reason_closed",
     "orders": ("_orders", tuple),
-    "positions": ("_positions", dict),
-    "positions_total": "_positions_total",
+    "positions_filled": ("_positions_filled", dict),
+    "positions_filled_total": "_positions_filled_total",
+    "positions_unfilled": ("_positions_unfilled", dict),
+    "positions_unfilled_total": "_positions_unfilled_total",
     "stop_loss": "_stop_loss",
     "take_profit": "_take_profit",
     "max_age": "_max_age",
@@ -162,8 +164,10 @@ class Trade:
         self._closed_iteration = None
         self._reason_closed = None
         self._orders = []
-        self._positions = {}
-        self._positions_total = 0
+        self._positions_filled = {}
+        self._positions_filled_total = 0
+        self._positions_unfilled = {}
+        self._positions_unfilled_total = 0
         self._stop_loss = None
         self._take_profit = None
         self._max_age = None
@@ -219,9 +223,11 @@ class Trade:
         """
         Update values and check if stop conditions are triggered.
         """
-        self._positions = self._broker._get_positions(self._orders, self._broker._last_prices)
-        self._positions_total = sum(position["value"] for position in self._positions.values())
-        self._pnl = self._balance + self._positions_total
+        self._positions_filled = self._broker._get_positions(self._orders, self._broker._last_prices, quantity="filled")
+        self._positions_unfilled = self._broker._get_positions(self._orders, self._broker._last_prices, quantity="unfilled")
+        self._positions_filled_total = sum(position["value"] for position in self._positions_filled.values())
+        self._positions_unfilled_total = sum(position["value"] for position in self._positions_unfilled.values())
+        self._pnl = self._balance + self._positions_filled_total
         self._age = self._broker._iteration - self._created_iteration
         if self._status == "OPEN":
             self._check_stop()
@@ -255,7 +261,7 @@ class Trade:
         self._reason_closed = reason_closed
         self._status = "CLOSED"
         # Use the latest positions dict to close all open positions
-        for ticker, pos in self._positions.items():
+        for ticker, pos in self._positions_filled.items():
             quantity = pos["quantity"]
             if quantity > 0:
                 order = self._broker._place_order(action="SELL", ticker=ticker, quantity=-abs(quantity), price=self._broker._last_prices[ticker])

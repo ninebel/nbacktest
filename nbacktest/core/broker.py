@@ -13,8 +13,10 @@ class BaseBroker:
         self._last_prices = None
         self._orders: list["Order"] = []
         self._trades: list["Trade"] = []
-        self._positions = {}
-        self._positions_total = 0.0
+        self._positions_filled = {}
+        self._positions_unfilled = {}
+        self._positions_filled_total = 0.0
+        self._positions_unfilled_total = 0.0
 
     
     def _update(self, iteration: int, last_prices: pd.Series):
@@ -22,10 +24,12 @@ class BaseBroker:
         self._iteration = iteration
         self._last_prices = last_prices
 
-        # Update positions based on filled orders
-        self._positions = self._get_positions(self._orders, self._last_prices)
-        self._positions_total = sum(position["value"] for position in self._positions.values())
-        self._equity = self._balance + self._positions_total
+        # Update positions based on filled and unfilled portions of orders
+        self._positions_filled = self._get_positions(self._orders, self._last_prices, quantity="filled")
+        self._positions_unfilled = self._get_positions(self._orders, self._last_prices, quantity="unfilled")
+        self._positions_filled_total = sum(position["value"] for position in self._positions_filled.values())
+        self._positions_unfilled_total = sum(position["value"] for position in self._positions_unfilled.values())
+        self._equity = self._balance + self._positions_filled_total
 
         # Update open trades
         for trade in self._trades:
@@ -67,13 +71,29 @@ class BaseBroker:
 
 
     @staticmethod
-    def _get_positions(orders: list, last_prices: pd.Series):
+    def _get_positions(orders: list, last_prices: pd.Series, quantity: str = "filled"):
+        """
+        Compute position quantities and values based on a quantity selector.
+
+        quantity options:
+        - "filled": use filled quantities (current actual positions)
+        - "unfilled": use requested minus filled (outstanding/pending quantities)
+        """
+
+        if quantity not in {"filled", "unfilled"}:
+            raise ValueError("quantity must be 'filled' or 'unfilled'")
+
         positions = {}
         for order in orders:
             ticker = order._ticker
             if ticker not in positions:
                 positions[ticker] = {"quantity": 0, "value": 0.0}
-            positions[ticker]["quantity"] += order._filled_quantity
+            if quantity == "filled":
+                qty = order._filled_quantity
+            else:
+                qty = order._requested_quantity - order._filled_quantity
+
+            positions[ticker]["quantity"] += qty
 
         # Remove zero qty positions
         positions = {k: v for k, v in positions.items() if v["quantity"] != 0}

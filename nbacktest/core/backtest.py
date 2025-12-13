@@ -152,7 +152,8 @@ class Backtest:
             results.append({
                 'ITERATION': self._broker._iteration,
                 'BALANCE': self._broker._balance,
-                'POSITIONS_TOTAL': self._broker._positions_total,
+                'POSITIONS_FILLED_TOTAL': self._broker._positions_filled_total,
+                'POSITIONS_UNFILLED_TOTAL': self._broker._positions_unfilled_total,
                 'EQUITY': self._broker._equity
             })
 
