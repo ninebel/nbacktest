@@ -106,6 +106,7 @@ class Backtest:
 
         return data
 
+
     def run(self):
         """
         Runs the backtest simulation by iterating over each time step.

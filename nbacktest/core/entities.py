@@ -133,11 +133,12 @@ class Order:
     "closed_iteration": "_closed_iteration",
     "reason_closed": "_reason_closed",
     "orders": ("_orders", tuple),
-    "positions": ("_positions", tuple),
+    "positions": ("_positions", dict),
     "positions_total": "_positions_total",
     "stop_loss": "_stop_loss",
     "take_profit": "_take_profit",
-    "max_age": "_max_age"
+    "max_age": "_max_age",
+    "age": "_age"
 })
 class Trade:
     """
@@ -166,6 +167,7 @@ class Trade:
         self._stop_loss = None
         self._take_profit = None
         self._max_age = None
+        self._age = 0
 
         for order in orders:
             self._add_order(order)
@@ -220,6 +222,7 @@ class Trade:
         self._positions = self._broker._get_positions(self._orders, self._broker._last_prices)
         self._positions_total = sum(position["value"] for position in self._positions.values())
         self._pnl = self._balance + self._positions_total
+        self._age = self._broker._iteration - self._created_iteration
         if self._status == "OPEN":
             self._check_stop()
 
@@ -237,7 +240,7 @@ class Trade:
                 self._close(reason_closed="TAKE_PROFIT")
                 return
         if self._max_age is not None:
-            if (self._broker._iteration - self._created_iteration) >= self._max_age:
+            if self._age >= self._max_age:
                 self._close(reason_closed="MAX_AGE")
                 return
  
