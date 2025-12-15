@@ -1,4 +1,5 @@
 import pandas as pd
+import requests
 from ..utils import *
 from .entities import Order, Trade
 
@@ -133,35 +134,66 @@ class BacktestBroker(BaseBroker):
 
 
 class RealBroker(BaseBroker):
-    def __init__(self, universe: list[str], cash: float, api_client, data: pd.DataFrame = None):
+    def __init__(self, universe: list[str], cash: float, base_url: str, data: pd.DataFrame = None, session: requests.sessions.Session | None = None):
+        """
+        Real broker that talks to HTTP endpoints directly.
+
+        base_url example: "http://metatrader_api:8080"
+        session can be a configured requests.Session; defaults to requests module.
+        """
         super().__init__(universe=universe, cash=cash, data=data)
-        self._api = api_client
+        self._base_url = base_url.rstrip("/")
         self._in_fill_update = False  # guard to avoid recursion when order._fill triggers broker._update
+
+    def _post_market_order(self, *, symbol: str, side: str, volume: float, deviation: int = 1, magic: int = 20250, comment: str = "nbacktest", take_profit: float = 0.0, stop_loss: float = 0.0) -> dict:
+        url = f"{self._base_url}/orders/market"
+        payload = {
+            "symbol": symbol,
+            "side": side,
+            "volume": volume,
+            "deviation": deviation,
+            "magic": magic,
+            "comment": comment,
+            "take_profit": take_profit,
+            "stop_loss": stop_loss,
+        }
+        resp = requests.post(url, json=payload, headers={"accept": "application/json"})
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Order placement failed: HTTP {resp.status_code} {resp.text}")
+        try:
+            return resp.json()
+        except Exception:
+            return {}
+
+    def _get_orders(self, ticket: int | None = None) -> list[dict]:
+        url = f"{self._base_url}/orders"
+        params = {"ticket": ticket} if ticket is not None else None
+        try:
+            resp = requests.get(url, params=params, headers={"accept": "application/json"})
+            if resp.status_code >= 400:
+                return []
+            return resp.json() or []
+        except Exception:
+            return []
 
     def _place_order(self, action: str, ticker: str, quantity: int, price: float, fee: float = 0.0):
         """
-        Send a market order to the external broker API and register the local order.
-        Fees are ignored (set to 0 for now).
+        Send a market order via HTTP and register the local order. Fees are ignored (set to 0).
         """
         side = "buy" if quantity > 0 else "sell"
-        try:
-            resp = self._api.market_order(symbol=ticker, side=side, volume=abs(quantity))
-        except Exception as exc:
-            raise RuntimeError(f"Order placement failed: {exc}")
+        resp = self._post_market_order(symbol=ticker, side=side, volume=abs(quantity))
 
-        # Use price hint from response if provided, otherwise requested price or last known price
-        price_hint = None
-        if isinstance(resp, dict):
-            price_hint = resp.get("price") or resp.get("price_open") or resp.get("price_current")
-        resolved_price = price_hint or price or (self._last_prices.get(ticker, 0) if self._last_prices is not None else 0)
+        # Prefer broker-executed price; if missing, raise since executed price is required
+        if not isinstance(resp, dict):
+            raise RuntimeError("Order placement failed: unexpected response format")
+
+        resolved_price = resp.get("price")
+        if resolved_price is None:
+            raise RuntimeError("Order placement failed: missing execution price in response")
 
         order = super()._place_order(action, ticker, quantity, resolved_price, fee=0.0)
-        # Keep a reference to provider-side id for reconciliation
-        if isinstance(resp, dict):
-            if "id" in resp:
-                order._provider_id = resp["id"]
-            elif "ticket" in resp:
-                order._provider_id = resp["ticket"]
+        # Keep a reference to provider-side id for reconciliation (use order field explicitly)
+        order._provider_id = resp["order"]
         return order
 
     def _sync_orders(self):
@@ -171,22 +203,18 @@ class RealBroker(BaseBroker):
         Supports MetaTrader-like responses containing keys such as:
         ticket, state, volume_initial, volume_current, price_open, price_current, symbol.
         """
-        try:
-            remote_orders = self._api.list_orders()
-        except Exception:
-            return  # fail soft; keep last known state
-
-        if not remote_orders:
-            return
-
+        # Query per-order to respect ticket filtering
         remote_index = {}
-        for ro in remote_orders:
-            if not isinstance(ro, dict):
+        for order in self._orders:
+            provider_id = getattr(order, "_provider_id", None)
+            if provider_id is None:
                 continue
-            rid = ro.get("id") or ro.get("ticket")
-            if rid is None:
-                continue
-            remote_index[rid] = ro
+            remote_list = self._get_orders(ticket=provider_id)
+            if not remote_list:
+                remote_index[provider_id] = []
+            else:
+                # assume first entry corresponds to the ticket
+                remote_index[provider_id] = remote_list
 
         # MetaTrader state mapping (best-effort defaults)
         mt_state = {
@@ -201,11 +229,14 @@ class RealBroker(BaseBroker):
 
         for order in self._orders:
             provider_id = getattr(order, "_provider_id", None)
-            if not provider_id or provider_id not in remote_index:
+            if provider_id is None:
                 continue
 
-            ro = remote_index[provider_id]
+            ros = remote_index.get(provider_id)
+            if not ros:
+                continue
 
+            ro = ros[0]
             volume_initial = ro.get("volume_initial")
             volume_current = ro.get("volume_current")
             if volume_initial is not None and volume_current is not None:
@@ -216,27 +247,28 @@ class RealBroker(BaseBroker):
             if filled_abs is None:
                 continue
 
+            price = ro.get("price_current")
+
             local_filled_abs = abs(order._filled_quantity)
             delta_abs = filled_abs - local_filled_abs
             if delta_abs > 0:
                 sign = 1 if order._requested_quantity > 0 else -1
                 qty_delta = delta_abs * sign
-
-                price = ro.get("avg_price") or ro.get("price_current") or ro.get("price_open") or order._requested_price
                 try:
                     self._in_fill_update = True
                     order._fill(quantity=qty_delta, price=price, fee=0.0)
                 finally:
                     self._in_fill_update = False
 
-            status_code = ro.get("state")
-            status = mt_state.get(status_code, str(ro.get("status", "")).upper())
-            if status in {"CANCELLED", "CANCELED"}:
-                order._cancel()
-            elif status == "REJECTED":
-                order._reject()
-            elif status == "EXPIRED":
-                order._expire()
+            if ros and ros != []:
+                status_code = ro.get("state")
+                status = mt_state.get(status_code, str(ro.get("status", "")).upper())
+                if status in {"CANCELLED", "CANCELED"}:
+                    order._cancel()
+                elif status == "REJECTED":
+                    order._reject()
+                elif status == "EXPIRED":
+                    order._expire()
 
     def _update(self, iteration: int, last_prices: pd.Series):
         # If this update is re-entered via order._fill, skip to avoid recursion; main caller will run after sync.
