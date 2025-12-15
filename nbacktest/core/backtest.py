@@ -23,10 +23,12 @@ class Backtest:
                  data: pd.DataFrame,
                  universe: list[str],
                  strategy_class: type,
+                 broker: "BaseBroker" = None,
                  price_column: str = "Close",
                  cash: float = 100_000,
                  alternative_data: pd.DataFrame = None,
-                 slicing_column: str = None):
+                 slicing_column: str = None,
+            ):
         """
         Initialize a Backtest instance for running trading strategy simulations.
 
@@ -48,6 +50,8 @@ class Backtest:
             List of asset symbols to backtest (e.g., ["AAPL", "MSFT"]).
         strategy_class : type
             The class of the trading strategy to use (should accept a broker instance).
+        broker : BaseBroker, optional
+            Custom broker instance (e.g., RealBroker). If not provided, BacktestBroker is used by default.
         price_column : str, default "Close"
             Name of the price column to use for trading and valuation.
         cash : float, default 100_000
@@ -77,7 +81,7 @@ class Backtest:
         self._price_column = price_column
         self._alternative_data = alternative_data
         self._slicing_column = slicing_column
-        self._broker = BacktestBroker(universe=universe, cash=cash, data=self._data)
+        self._broker = broker if broker is not None else BacktestBroker(universe=universe, cash=cash, data=self._data)
         self._strategy = strategy_class(self._broker)
         self._result = None
         self._orderbook = None
