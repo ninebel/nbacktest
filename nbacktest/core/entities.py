@@ -85,7 +85,7 @@ class Order:
 
         # Update Status
         if abs(self._filled_quantity) < abs(self._requested_quantity):
-            self._status = "LIVE"
+            self._status = "UNFILLED"
         else:
             self._status = "FILLED"
             self._broker._balance += self._filled_total
