@@ -8,6 +8,7 @@ from ..utils import *
     "action": "_action",
     "status": "_status",
     "broker": "_broker",
+    "notes": "_notes",
     "iteration_requested": "_iteration_requested",
     "quantity_requested": "_quantity_requested",
     "price_requested": "_price_requested",
@@ -34,7 +35,8 @@ class Order:
                  quantity: int,
                  price: float,
                  fee: float = 0.0,
-                 status: str = "PENDING"
+                 status: str = "PENDING",
+                 notes: str = ""
                  ) -> None:
 
         self._id = str(uuid.uuid4())
@@ -42,6 +44,7 @@ class Order:
         self._action = action
         self._status = status
         self._broker = broker
+        self._notes = notes
         self._trade_id = None
         
         self._iteration_requested = self._broker._iteration
@@ -216,7 +219,7 @@ class Trade:
         self._orders.append(order)
         order._trade_id = self._id
         self._created_iteration = min(order.iteration_requested for order in self._orders)
-        self._balance += order._filled_total
+        self._balance += order._total_filled
         self._update()
         return True
 

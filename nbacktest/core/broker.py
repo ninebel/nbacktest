@@ -43,7 +43,8 @@ class BaseBroker:
                     ticker: str,
                     quantity: int,
                     price: float,
-                    fee: float = 0.0
+                    fee: float = 0.0,
+                    notes: str = ""
                    ):
         """
         Base place_order only creates order object
@@ -56,7 +57,8 @@ class BaseBroker:
             quantity=quantity,
             price=price,
             fee=fee,
-            status="pending"
+            status="pending",
+            notes=notes
         )
 
         self._orders.append(order)
@@ -113,15 +115,17 @@ class BacktestBroker(BaseBroker):
                      ticker: str,
                      quantity: int,
                      price: float,
-                     fee: float = 0.0
+                     fee: float = 0.0,
+                     notes: str = ""
                     ):
         
         order = super()._place_order(action=action, 
-                                    ticker=ticker,
-                                    quantity=quantity,
-                                    price=price,
-                                    fee=fee
-                                   )
+                        ticker=ticker,
+                        quantity=quantity,
+                        price=price,
+                        fee=fee,
+                        notes=notes
+                       )
 
         # Fill immediately (simulate instant fill)
         order._fill(quantity=quantity,
@@ -194,7 +198,7 @@ class RealBroker(BaseBroker):
         except Exception:
             return []
 
-    def _place_order(self, action: str, ticker: str, quantity: int, price: float, fee: float = 0.0):
+    def _place_order(self, action: str, ticker: str, quantity: int, price: float, fee: float = 0.0, notes: str = ""):
         """
         Send a market order via HTTP and register the local order. Fees are ignored (set to 0).
         """
@@ -209,7 +213,7 @@ class RealBroker(BaseBroker):
         if resolved_price is None:
             raise RuntimeError("Order placement failed: missing execution price in response")
 
-        order = super()._place_order(action, ticker, quantity, resolved_price, fee=0.0)
+        order = super()._place_order(action, ticker, quantity, resolved_price, fee=0.0, notes=notes)
         # Keep a reference to provider-side id for reconciliation (use order field explicitly)
         order._provider_id = resp["order"]
         return order
