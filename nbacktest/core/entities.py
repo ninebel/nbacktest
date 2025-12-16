@@ -50,9 +50,9 @@ class Order:
         self._iteration_requested = self._broker._iteration
         self._quantity_requested = quantity
         self._price_requested = price
-        self._fee_requested = fee
-        self._gross_total_requested = self._quantity_requested * self._price_requested
-        self._total_requested = self._gross_total_requested - self._fee_requested
+        self._fee_requested = -abs(fee)  # fees are always money going out
+        self._gross_total_requested = -(self._quantity_requested * self._price_requested) # quantity > 0 (BUY) and quantity < 0 (SELL), meaning money going out for BUY and money coming in for SELL
+        self._total_requested = self._gross_total_requested + self._fee_requested
 
         self._iteration_filled = None
         self._quantity_filled = 0
@@ -73,18 +73,19 @@ class Order:
         self._iteration_filled = self._broker._iteration
         self._quantity_filled += quantity
         self._fee_filled += fee
-        fill_cost = price * quantity
+        fill_cost = -(price * quantity) # quantity > 0 (BUY) and quantity < 0 (SELL), meaning money going out for BUY and money coming in for SELL
+        fee = -abs(fee) # fees are always money going out
 
         # Update average weighted price
         if self._price_filled is None:
             self._price_filled = price
         else:
             current_total_cost = self._gross_total_filled + fill_cost
-            self._price_filled = current_total_cost / self._quantity_filled
+            self._price_filled = abs(current_total_cost / self._quantity_filled)
 
         # Update totals
-        self._gross_total_filled -= fill_cost
-        self._total_filled -= fill_cost + fee
+        self._gross_total_filled += fill_cost
+        self._total_filled += fill_cost + fee
 
         # Update Status
         if abs(self._quantity_filled) < abs(self._quantity_requested):
