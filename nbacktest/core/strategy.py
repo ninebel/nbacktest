@@ -49,7 +49,8 @@ class Strategy (metaclass=ABCMeta):
              ticker: str,
              quantity: int,
              price: float = None,
-             fee: float = 0.0
+             fee: float = 0.0,
+             notes: str = ""
              ):
         """
         Request broker to place a BUY/LONG order.
@@ -67,7 +68,8 @@ class Strategy (metaclass=ABCMeta):
                                          ticker=ticker,
                                          quantity=abs(quantity),
                                          price=price,
-                                         fee=fee
+                                         fee=fee,
+                                         notes=notes
                                         )
 
 
@@ -75,7 +77,8 @@ class Strategy (metaclass=ABCMeta):
               ticker: str,
               quantity: int,
               price: float = None,
-              fee: float = 0.0
+              fee: float = 0.0,
+              notes: str = ""
               ):
         """
         Request broker to place a SELL/SHORT order.
@@ -93,7 +96,8 @@ class Strategy (metaclass=ABCMeta):
                                          ticker=ticker,
                                          quantity=-abs(quantity),
                                          price=price,
-                                         fee=fee
+                                         fee=fee,
+                                         notes=notes
                                         )
 
 
