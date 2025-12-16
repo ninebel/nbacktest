@@ -298,9 +298,10 @@ class RealBroker(BaseBroker):
                     order._expire()
 
     def _update(self, iteration: int, last_prices: pd.Series):
-        # If this update is re-entered via order._fill, skip to avoid recursion; main caller will run after sync.
+        # If re-entered via order._fill, run base bookkeeping immediately to reflect fills in the same iteration
+        # without triggering another sync cycle.
         if self._in_fill_update:
-            return
+            return BaseBroker._update(self, iteration=iteration, last_prices=last_prices)
 
         self._iteration = iteration
         self._last_prices = last_prices

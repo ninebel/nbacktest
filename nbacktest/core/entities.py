@@ -50,7 +50,7 @@ class Order:
         self._iteration_requested = self._broker._iteration
         self._quantity_requested = quantity
         self._price_requested = price
-        self._fee_requested = -abs(fee)  # fees are always money going out
+        self._fee_requested = -abs(fee) if fee > 0 or fee < 0 else 0  # fees are always money going out
         self._gross_total_requested = -(self._quantity_requested * self._price_requested) # quantity > 0 (BUY) and quantity < 0 (SELL), meaning money going out for BUY and money coming in for SELL
         self._total_requested = self._gross_total_requested + self._fee_requested
 
