@@ -137,6 +137,7 @@ class Order:
     "pnl": "_pnl",
     "created_iteration": "_created_iteration",
     "closed_iteration": "_closed_iteration",
+    "age": "_age",
     "reason_closed": "_reason_closed",
     "orders": ("_orders", tuple),
     "positions_filled": ("_positions_filled", dict),
@@ -146,7 +147,6 @@ class Order:
     "stop_loss": "_stop_loss",
     "take_profit": "_take_profit",
     "max_age": "_max_age",
-    "age": "_age"
 })
 class Trade:
     """
@@ -168,6 +168,7 @@ class Trade:
         self._pnl = 0
         self._created_iteration = None
         self._closed_iteration = None
+        self._age = None
         self._reason_closed = None
         self._orders = []
         self._positions_filled = {}
@@ -177,7 +178,6 @@ class Trade:
         self._stop_loss = None
         self._take_profit = None
         self._max_age = None
-        self._age = 0
 
         for order in orders:
             self._add_order(order)

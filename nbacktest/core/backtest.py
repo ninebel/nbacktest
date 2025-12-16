@@ -143,12 +143,10 @@ class Backtest:
             self._strategy._iteration = iteration
             self._strategy._prices = self._strategy._data.loc[:, self._price_column]
 
-            # Update the broker with latest prices
-            self._broker._update(iteration=iteration, last_prices=self._strategy._prices.iloc[-1])
-
             # Run strategy lifecycle hooks
             try:
                 if self._data.index.get_loc(iteration) == 0:
+                    self._broker._update(iteration=iteration, last_prices=self._strategy._prices.iloc[-1])
                     self._strategy.on_start()
                 self._strategy.next()
                 if self._data.index.get_loc(iteration) == len(self._data) - 1:
@@ -158,6 +156,9 @@ class Backtest:
             except Exception as e:
                 print(e)
                 raise e
+
+            # Update the broker with latest prices
+            self._broker._update(iteration=iteration, last_prices=self._strategy._prices.iloc[-1])
 
             # Collect performance metrics
             results.append({

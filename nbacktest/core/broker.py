@@ -2,6 +2,7 @@ import pandas as pd
 import requests
 from ..utils import *
 from .entities import Order, Trade
+import time
 
 
 class BaseBroker:
@@ -138,6 +139,7 @@ class BacktestBroker(BaseBroker):
 
 
 class RealBroker(BaseBroker):
+    
     def __init__(self, universe: list[str], cash: float = 0.0, base_url: str = "", data: pd.DataFrame = None, session: requests.sessions.Session | None = None):
         """
         Real broker that talks to HTTP endpoints directly.
@@ -149,6 +151,7 @@ class RealBroker(BaseBroker):
         self._base_url = base_url.rstrip("/")
         self._in_fill_update = False  # guard to avoid recursion when order._fill triggers broker._update
 
+    
     def _post_market_order(self, *, symbol: str, side: str, volume: float, deviation: int = 1, magic: int = 20250, comment: str = "nbacktest", take_profit: float = 0.0, stop_loss: float = 0.0) -> dict:
         url = f"{self._base_url}/orders/market"
         payload = {
@@ -165,11 +168,12 @@ class RealBroker(BaseBroker):
         if resp.status_code >= 400:
             raise RuntimeError(f"Order placement failed: HTTP {resp.status_code} {resp.text}")
         try:
-            print('post_market_order response:', resp.text)
+            #print('post_market_order response:', resp.text)
             return resp.json()
         except Exception:
             return {}
 
+    
     def _get_orders(self, ticket: int | None = None) -> list[dict]:
         url = f"{self._base_url}/orders"
         params = {"ticket": ticket} if ticket is not None else None
@@ -177,11 +181,12 @@ class RealBroker(BaseBroker):
             resp = requests.get(url, params=params, headers={"accept": "application/json"})
             if resp.status_code >= 400:
                 return []
-            print('get_orders response:', resp.text)
+            #print('get_orders response:', resp.text)
             return resp.json() or []
         except Exception:
             return []
 
+    
     def _get_orders_history(self, ticket: int) -> list[dict]:
         """
         Fetch closed orders history to retrieve execution details (e.g., price_current)
@@ -193,11 +198,12 @@ class RealBroker(BaseBroker):
             resp = requests.get(url, params=params, headers={"accept": "application/json"})
             if resp.status_code >= 400:
                 return []
-            print('get_orders_history response:', resp.text)
+            #print('get_orders_history response:', resp.text)
             return resp.json() or []
         except Exception:
             return []
 
+    
     def _place_order(self, action: str, ticker: str, quantity: int, price: float, fee: float = 0.0, notes: str = ""):
         """
         Send a market order via HTTP and register the local order. Fees are ignored (set to 0).
@@ -213,10 +219,12 @@ class RealBroker(BaseBroker):
         if resolved_price is None:
             raise RuntimeError("Order placement failed: missing execution price in response")
 
+        time.sleep(1)
         order = super()._place_order(action, ticker, quantity, resolved_price, fee=0.0, notes=notes)
         # Keep a reference to provider-side id for reconciliation (use order field explicitly)
         order._provider_id = resp["order"]
         return order
+
 
     def _sync_orders(self):
         """
@@ -297,6 +305,7 @@ class RealBroker(BaseBroker):
                 elif status == "EXPIRED":
                     order._expire()
 
+    
     def _update(self, iteration: int, last_prices: pd.Series):
         # If re-entered via order._fill, run base bookkeeping immediately to reflect fills in the same iteration
         # without triggering another sync cycle.
