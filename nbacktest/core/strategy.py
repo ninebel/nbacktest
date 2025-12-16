@@ -108,7 +108,7 @@ class Strategy (metaclass=ABCMeta):
         if quantity == 0:
             raise ValueError("Filled quantity must be non-zero")
             
-        if abs(order.filled_quantity) + abs(quantity) > abs(order.requested_quantity):
+        if abs(order.quantity_filled) + abs(quantity) > abs(order.quantity_requested):
             raise ValueError("Filled quantity exceeds requested quantity")
 
         quantity = abs(quantity) if order.action == "BUY" else -abs(quantity)

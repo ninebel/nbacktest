@@ -81,7 +81,14 @@ class Backtest:
         self._price_column = price_column
         self._alternative_data = alternative_data
         self._slicing_column = slicing_column
-        self._broker = broker if broker is not None else BacktestBroker(universe=universe, cash=cash, data=self._data)
+        if broker is None:
+            self._broker = BacktestBroker(universe=universe, cash=cash, data=self._data)
+        else:
+            self._broker = broker
+            if cash is not None:
+                # Align provided broker's starting cash with Backtest cash parameter
+                self._broker._balance = cash
+                self._broker._equity = cash
         self._strategy = strategy_class(self._broker)
         self._result = None
         self._orderbook = None

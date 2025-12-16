@@ -8,18 +8,18 @@ from ..utils import *
     "action": "_action",
     "status": "_status",
     "broker": "_broker",
-    "requested_iteration": "_requested_iteration",
-    "requested_quantity": "_requested_quantity",
-    "requested_price": "_requested_price",
-    "requested_fee": "_requested_fee",
-    "requested_gross_total": "_requested_gross_total",
-    "requested_total": "_requested_total",
-    "filled_iteration": "_filled_iteration",
-    "filled_quantity": "_filled_quantity",
-    "filled_price": "_filled_price",
-    "filled_fee": "_filled_fee",
-    "filled_gross_total": "_filled_gross_total",
-    "filled_total": "_filled_total",
+    "iteration_requested": "_iteration_requested",
+    "quantity_requested": "_quantity_requested",
+    "price_requested": "_price_requested",
+    "fee_requested": "_fee_requested",
+    "gross_total_requested": "_gross_total_requested",
+    "total_requested": "_total_requested",
+    "iteration_filled": "_iteration_filled",
+    "quantity_filled": "_quantity_filled",
+    "price_filled": "_price_filled",
+    "fee_filled": "_fee_filled",
+    "gross_total_filled": "_gross_total_filled",
+    "total_filled": "_total_filled",
 })
 class Order:
     """
@@ -44,19 +44,19 @@ class Order:
         self._broker = broker
         self._trade_id = None
         
-        self._requested_iteration = self._broker._iteration
-        self._requested_quantity = quantity
-        self._requested_price = price
-        self._requested_fee = fee
-        self._requested_gross_total = self._requested_quantity * self._requested_price
-        self._requested_total = self._requested_gross_total - self._requested_fee
+        self._iteration_requested = self._broker._iteration
+        self._quantity_requested = quantity
+        self._price_requested = price
+        self._fee_requested = fee
+        self._gross_total_requested = self._quantity_requested * self._price_requested
+        self._total_requested = self._gross_total_requested - self._fee_requested
 
-        self._filled_iteration = None
-        self._filled_quantity = 0
-        self._filled_price = None
-        self._filled_fee = 0.0
-        self._filled_gross_total = 0.0
-        self._filled_total = 0
+        self._iteration_filled = None
+        self._quantity_filled = 0
+        self._price_filled = None
+        self._fee_filled = 0.0
+        self._gross_total_filled = 0.0
+        self._total_filled = 0
 
     
     def _fill(self,
@@ -67,28 +67,28 @@ class Order:
         """
         Record a fill event, updating filled quantities, costs, fees, and order status.
         """
-        self._filled_iteration = self._broker._iteration
-        self._filled_quantity += quantity
-        self._filled_fee += fee
+        self._iteration_filled = self._broker._iteration
+        self._quantity_filled += quantity
+        self._fee_filled += fee
         fill_cost = price * quantity
 
         # Update average weighted price
-        if self._filled_price is None:
-            self._filled_price = price
+        if self._price_filled is None:
+            self._price_filled = price
         else:
-            current_total_cost = self._filled_gross_total + fill_cost
-            self._filled_price = current_total_cost / self._filled_quantity
+            current_total_cost = self._gross_total_filled + fill_cost
+            self._price_filled = current_total_cost / self._quantity_filled
 
         # Update totals
-        self._filled_gross_total -= fill_cost
-        self._filled_total -= fill_cost + fee
+        self._gross_total_filled -= fill_cost
+        self._total_filled -= fill_cost + fee
 
         # Update Status
-        if abs(self._filled_quantity) < abs(self._requested_quantity):
+        if abs(self._quantity_filled) < abs(self._quantity_requested):
             self._status = "UNFILLED"
         else:
             self._status = "FILLED"
-            self._broker._balance += self._filled_total
+            self._broker._balance += self._total_filled
 
         # Update Broker
         self._broker._update(iteration=self._broker._iteration, last_prices=self._broker._last_prices)
@@ -118,9 +118,11 @@ class Order:
 
     
     def __repr__(self):
-        return (f"<Order {self._action} {self._requested_quantity} {self._ticker} "
-                f"at {self._requested_price:.2f} | Filled Quantity: {self._filled_quantity} | Filled Price: {self._filled_price:.2f} "
-                f"| Filled Total: {self._filled_total:.2f} | Status: {self._status}>")
+        # Guard against None values for partially filled/unfilled orders when formatting
+        filled_price_str = f"{self._price_filled:.2f}" if self._price_filled is not None else "-"
+        return (f"<Order {self._action} {self._quantity_requested} {self._ticker} "
+            f"at {self._price_requested:.2f} | Filled Quantity: {self._quantity_filled} | Filled Price: {filled_price_str} "
+            f"| Filled Total: {self._total_filled:.2f} | Status: {self._status}>")
 
 
 @auto_properties({
@@ -213,7 +215,7 @@ class Trade:
         """
         self._orders.append(order)
         order._trade_id = self._id
-        self._created_iteration = min(order.requested_iteration for order in self._orders)
+        self._created_iteration = min(order.iteration_requested for order in self._orders)
         self._balance += order._filled_total
         self._update()
         return True

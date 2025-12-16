@@ -90,9 +90,9 @@ class BaseBroker:
             if ticker not in positions:
                 positions[ticker] = {"quantity": 0, "value": 0.0}
             if quantity == "filled":
-                qty = order._filled_quantity
+                qty = order._quantity_filled
             else:
-                qty = order._requested_quantity - order._filled_quantity
+                qty = order._quantity_requested - order._quantity_filled
 
             positions[ticker]["quantity"] += qty
 
@@ -134,7 +134,7 @@ class BacktestBroker(BaseBroker):
 
 
 class RealBroker(BaseBroker):
-    def __init__(self, universe: list[str], cash: float, base_url: str, data: pd.DataFrame = None, session: requests.sessions.Session | None = None):
+    def __init__(self, universe: list[str], cash: float = 0.0, base_url: str = "", data: pd.DataFrame = None, session: requests.sessions.Session | None = None):
         """
         Real broker that talks to HTTP endpoints directly.
 
@@ -161,6 +161,7 @@ class RealBroker(BaseBroker):
         if resp.status_code >= 400:
             raise RuntimeError(f"Order placement failed: HTTP {resp.status_code} {resp.text}")
         try:
+            print('post_market_order response:', resp.text)
             return resp.json()
         except Exception:
             return {}
@@ -172,6 +173,23 @@ class RealBroker(BaseBroker):
             resp = requests.get(url, params=params, headers={"accept": "application/json"})
             if resp.status_code >= 400:
                 return []
+            print('get_orders response:', resp.text)
+            return resp.json() or []
+        except Exception:
+            return []
+
+    def _get_orders_history(self, ticket: int) -> list[dict]:
+        """
+        Fetch closed orders history to retrieve execution details (e.g., price_current)
+        when the open orders endpoint no longer returns the ticket.
+        """
+        url = f"{self._base_url}/orders/history"
+        params = {"ticket": ticket}
+        try:
+            resp = requests.get(url, params=params, headers={"accept": "application/json"})
+            if resp.status_code >= 400:
+                return []
+            print('get_orders_history response:', resp.text)
             return resp.json() or []
         except Exception:
             return []
@@ -211,7 +229,9 @@ class RealBroker(BaseBroker):
                 continue
             remote_list = self._get_orders(ticket=provider_id)
             if not remote_list:
-                remote_index[provider_id] = []
+                # Try history endpoint for filled/closed orders
+                history_list = self._get_orders_history(ticket=provider_id)
+                remote_index[provider_id] = history_list or []
             else:
                 # assume first entry corresponds to the ticket
                 remote_index[provider_id] = remote_list
@@ -232,27 +252,30 @@ class RealBroker(BaseBroker):
             if provider_id is None:
                 continue
 
-            ros = remote_index.get(provider_id)
-            if not ros:
-                continue
+            ros = remote_index.get(provider_id, [])
 
-            ro = ros[0]
-            volume_initial = ro.get("volume_initial")
-            volume_current = ro.get("volume_current")
-            if volume_initial is not None and volume_current is not None:
-                filled_abs = volume_initial - volume_current
+            if ros == []:
+                # API returns only open/partial; empty means fully filled
+                filled_abs = abs(order._quantity_requested)
+                price = self._last_prices.get(order._ticker, order._price_requested) if self._last_prices is not None else order._price_requested
             else:
-                filled_abs = ro.get("filled_volume")
+                ro = ros[0]
+                volume_initial = ro.get("volume_initial")
+                volume_current = ro.get("volume_current")
+                if volume_initial is not None and volume_current is not None:
+                    filled_abs = volume_initial - volume_current
+                else:
+                    filled_abs = ro.get("filled_volume")
 
-            if filled_abs is None:
-                continue
+                if filled_abs is None:
+                    continue
 
-            price = ro.get("price_current")
+                price = ro.get("price_current") or ro.get("price_open") or (self._last_prices.get(order._ticker, order._price_requested) if self._last_prices is not None else order._price_requested)
 
-            local_filled_abs = abs(order._filled_quantity)
+            local_filled_abs = abs(order._quantity_filled)
             delta_abs = filled_abs - local_filled_abs
             if delta_abs > 0:
-                sign = 1 if order._requested_quantity > 0 else -1
+                sign = 1 if order._quantity_requested > 0 else -1
                 qty_delta = delta_abs * sign
                 try:
                     self._in_fill_update = True
