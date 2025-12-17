@@ -48,6 +48,7 @@ class Order:
         self._trade_id = None
         
         self._iteration_requested = self._broker._iteration
+        print('order',self._iteration_requested)
         self._quantity_requested = quantity
         self._price_requested = price
         self._fee_requested = -abs(fee) if fee > 0 or fee < 0 else 0  # fees are always money going out
