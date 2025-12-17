@@ -276,7 +276,7 @@ class Trade:
                 order = self._broker._place_order(action="BUY", ticker=ticker, quantity=abs(quantity), price=self._broker._last_prices[ticker])
                 self._add_order(order)
 
-        self._closed_iteration = max(order._filled_iteration for order in self._orders)
+        self._closed_iteration = max(order._iteration_filled for order in self._orders)
         self._update()
         return True
 
